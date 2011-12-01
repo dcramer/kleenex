@@ -10,8 +10,6 @@ This is an adaptation from lodgeit's lib/diff.py
 
 import re
 
-from cgi import escape
-
 class DiffParser(object):
     """
     This is based on code from the open source project, "lodgeit".
@@ -20,7 +18,7 @@ class DiffParser(object):
 
     def __init__(self, udiff):
         """:param udiff:   a text in udiff format"""
-        self.lines = [escape(line) for line in udiff.splitlines()]
+        self.lines = udiff.splitlines()
 
     def _extract_rev(self, line1, line2):
         def _extract(line):
@@ -33,50 +31,8 @@ class DiffParser(object):
             pass
         return (None, None), (None, None)
 
-    def _parse_info(self):
-        """Look for custom information preceding the diff."""
-        nlines = len(self.lines)
-        if not nlines:
-            return
-        firstline = self.lines[0]
-        info = []
-
-        # look for Hg export changeset
-        if firstline.startswith('# HG changeset patch'):
-            info.append(('Type', 'HG export changeset'))
-            i = 0
-            line = firstline
-            while line.startswith('#'):
-                if line.startswith('# User'):
-                    info.append(('User', line[7:].strip()))
-                elif line.startswith('# Date'):
-                    try:
-                        t, tz = map(int, line[7:].split())
-                        info.append(('Date', time.strftime(
-                            '%b %d, %Y %H:%M:%S', time.gmtime(float(t) - tz))))
-                    except Exception:
-                        pass
-                elif line.startswith('# Branch'):
-                    info.append(('Branch', line[9:].strip()))
-                i += 1
-                if i == nlines:
-                    return info
-                line = self.lines[i]
-            commitmsg = ''
-            while not line.startswith('diff'):
-                commitmsg += line + '\n'
-                i += 1
-                if i == nlines:
-                    return info
-                line = self.lines[i]
-            info.append(('Commit message', '\n' + commitmsg.strip()))
-            self.lines = self.lines[i:]
-        return info
-
     def _parse_udiff(self):
         """Parse the diff an return data for the template."""
-        info = self._parse_info()
-
         in_header = True
         header = []
         lineiter = iter(self.lines)
@@ -92,7 +48,7 @@ class DiffParser(object):
                     continue
 
                 if header and all(x.strip() for x in header):
-                    files.append({'is_header': True, 'lines': header})
+                    # files.append({'is_header': True, 'lines': header})
                     header = []
 
                 in_header = False
@@ -155,7 +111,7 @@ class DiffParser(object):
         except StopIteration:
             pass
 
-        return files, info
+        return files
 
     def parse(self):
         return self._parse_udiff()

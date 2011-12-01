@@ -83,7 +83,7 @@ class TestCoveragePlugin(Plugin):
         self.logger.info("Parsing diff from parent %s", parent)
         s = time.time()
         parser = DiffParser(diff)
-        files, info = parser.parse()
+        files = parser.parse()
         self.logger.info("Parsed diff in %.2fs", time.time() - s)
 
         for file in files:
