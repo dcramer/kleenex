@@ -48,12 +48,17 @@ class TestCoveragePlugin(Plugin):
                           dest="record_test_coverage", action="store_true",
                           default=None)
 
+        parser.add_option("--skip-missing-coverage",
+                          dest="skip_missing_coverage", action="store_true",
+                          default=None)
+
         parser.add_option("--discover",
                           dest="discover", action="store_true",
                           default=None)
 
     def configure(self, options, config):
         self.enabled = (options.record_test_coverage or options.discover)
+        self.skip_missing = options.skip_missing_coverage
         self.discover = options.discover
         self.logger = logging.getLogger(__name__)
 
@@ -108,8 +113,10 @@ class TestCoveragePlugin(Plugin):
                 continue
 
             if filename not in self.test_coverage:
-                self.logger.warning('%s has no test coverage recorded', filename)
-                continue
+                if self.skip_missing:
+                    self.logger.warning('%s has no test coverage recorded', filename)
+                    continue
+                raise AssertionError("Missing test coverage for %s" % filename)
 
             for chunk in file['chunks']:
                 lineiter = iter(chunk)
