@@ -86,7 +86,7 @@ class TestCoveragePlugin(Plugin):
         files = parser.parse()
         self.logger.info("Parsed diff in %.2fs", time.time() - s)
 
-        self.logger.info("Finding coverage")
+        self.logger.info("Finding coverage for %d file(s)", len(files))
         s = time.time()
         for file in files:
             if file['is_header']:
@@ -124,6 +124,7 @@ class TestCoveragePlugin(Plugin):
     def wantMethod(self, method):
         if not self.discover:
             return
+
         # only works with unittest compatible functions currently
         func_name = '%s:%s.%s' % (method.im_class.__module__, method.im_class.__name__, method.__name__)
         if func_name in self.pending_funcs:
