@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 
 import cPickle as pickle
+import gzip
 import logging
 import os
 import sys
@@ -13,7 +14,7 @@ from nose.plugins.base import Plugin
 from nose_bleed.diff import DiffParser
 from subprocess import Popen, PIPE, STDOUT
 
-COVERAGE_DATA_FILE = 'test_coverage.pickle'
+COVERAGE_DATA_FILE = 'coverage.db.gz'
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
@@ -60,7 +61,8 @@ class TestCoveragePlugin(Plugin):
         if os.path.exists(COVERAGE_DATA_FILE):
             self.logger.info("Loading pickled coverage data from %s..", COVERAGE_DATA_FILE)
             s = time.time()
-            self.test_coverage = pickle.load(open(COVERAGE_DATA_FILE, 'rb'))
+            with gzip.open(COVERAGE_DATA_FILE, 'rb') as fp:
+                self.test_coverage = pickle.load(fp)
             self.logger.info("Loaded coverage data in %.2fs", time.time() - s)
 
         elif self.discover:
@@ -83,7 +85,7 @@ class TestCoveragePlugin(Plugin):
         self.logger.info("Parsing diff from parent %s", parent)
         s = time.time()
         parser = DiffParser(diff)
-        files = parser.parse()
+        files = list(parser.parse())
         self.logger.info("Parsed diff in %.2fs", time.time() - s)
 
         self.logger.info("Finding coverage for %d file(s)", len(files))
@@ -132,7 +134,11 @@ class TestCoveragePlugin(Plugin):
         return False
 
     def finalize(self, result):
-        pickle.dump(self.test_coverage, open(COVERAGE_DATA_FILE, 'wb'))
+        self.logger.info("Saving coverage data to %s", COVERAGE_DATA_FILE)
+        s = time.time()
+        with gzip.open(COVERAGE_DATA_FILE, 'wb') as fp:
+            pickle.dump(self.test_coverage, fp, 1)
+        self.logger.info("Saved coverage data in %.2fs", time.time() - s)
 
     def startTest(self, test):
         self.coverage = coverage(include='disqus/*')
