@@ -57,9 +57,6 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
 
     def begin(self):
-        # TODO: this needs to be the nose root (not disqus)
-        self.base_path = os.path.normpath(os.path.join(os.path.dirname(sys.modules['disqus'].__file__), os.pardir)) + '/'
-
         if os.path.exists(COVERAGE_DATA_FILE):
             self.logger.info("Loading pickled coverage data from %s..", COVERAGE_DATA_FILE)
             s = time.time()
@@ -155,7 +152,8 @@ class TestCoveragePlugin(Plugin):
 
         for cu in rep.code_units:
             try:
-                filename = cu.filename.replace(self.base_path, '')
+                # TODO: this CANT work in all cases, must be a better way
+                filename = cu.name + '.py'
                 analysis = rep.coverage._analyze(cu)
                 if filename not in units:
                     units[filename] = {}
