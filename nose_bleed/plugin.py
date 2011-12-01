@@ -11,7 +11,7 @@ from coverage import coverage
 from coverage.report import Reporter
 from nose.plugins.base import Plugin
 from nose_bleed.diff import DiffParser
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, STDOUT
 
 COVERAGE_DATA_FILE = 'test_coverage.pickle'
 
@@ -73,9 +73,9 @@ class TestCoveragePlugin(Plugin):
 
         # pull in our diff
         # git diff `git merge-base HEAD master`
-        proc = Popen('git merge-base HEAD origin/master'.split(), stdout=PIPE)
-        parent = proc.stdout.read()
-        proc = Popen(('git diff %s' % parent).split(), stdout=PIPE)
+        proc = Popen('git merge-base HEAD origin/master'.split(), stdout=PIPE, stderr=STDOUT)
+        parent = proc.stdout.read().strip()
+        proc = Popen(('git diff %s' % parent).split(), stdout=PIPE, stderr=STDOUT)
         diff = proc.stdout.read()
 
         pending_funcs = self.pending_funcs = set()

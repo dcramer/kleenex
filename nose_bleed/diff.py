@@ -31,8 +31,7 @@ class DiffParser(object):
             pass
         return (None, None), (None, None)
 
-    def _parse_udiff(self):
-        """Parse the diff an return data for the template."""
+    def parse(self):
         in_header = True
         header = []
         lineiter = iter(self.lines)
@@ -112,6 +111,3 @@ class DiffParser(object):
             pass
 
         return files
-
-    def parse(self):
-        return self._parse_udiff()
