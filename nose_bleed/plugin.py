@@ -57,6 +57,7 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
 
     def begin(self):
+        # TODO: this needs to be the nose root (not disqus)
         self.base_path = os.path.normpath(os.path.join(os.path.dirname(sys.modules['disqus'].__file__), os.pardir)) + '/'
 
         if os.path.exists(COVERAGE_DATA_FILE):
