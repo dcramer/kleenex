@@ -17,6 +17,11 @@ setup(
     install_requires=[
         'nose>=0.9',
     ],
+    entry_points={
+       'nose.plugins.0.10': [
+            'nose_bleed = nose_bleed.plugin:TestCoveragePlugin'
+        ]
+    },
     license='Apache License 2.0',
     tests_require=tests_require,
     extras_require={'test': tests_require},
