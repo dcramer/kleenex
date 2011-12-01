@@ -170,17 +170,17 @@ class TestCoveragePlugin(Plugin):
         for cu in rep.code_units:
             try:
                 # TODO: this CANT work in all cases, must be a better way
-                filename = cu.name + '.py'
                 analysis = rep.coverage._analyze(cu)
+                filename = cu.name + '.py'
                 if filename not in units:
                     units[filename] = {}
                 for lineno in analysis.statements:
-                    units[filename].setdefault(lineno, set())
-                    units[filename][lineno].add(test_name)
+                    if lineno not in units[filename]:
+                        units[filename][lineno] = set([test_name])
+                    else:
+                        units[filename][lineno].add(test_name)
             except KeyboardInterrupt:                       # pragma: no cover
                 raise
             except:
                 traceback.print_exc()
-                if not rep.ignore_errors:
-                    typ, msg = sys.exc_info()[:2]
 
