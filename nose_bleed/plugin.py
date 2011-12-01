@@ -86,6 +86,8 @@ class TestCoveragePlugin(Plugin):
         files = parser.parse()
         self.logger.info("Parsed diff in %.2fs", time.time() - s)
 
+        self.logger.info("Finding coverage")
+        s = time.time()
         for file in files:
             if file['is_header']:
                 continue
@@ -117,6 +119,7 @@ class TestCoveragePlugin(Plugin):
                             pending_funcs.update(self.test_coverage[filename][lineno])
                 except StopIteration:
                     pass
+        self.logger.info("Determined available coverage in %.2fs", time.time() - s)
 
     def wantMethod(self, method):
         if not self.discover:
