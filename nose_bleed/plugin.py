@@ -82,7 +82,7 @@ class TestCoverageDB(object):
                 continue
             if lineno not in self._coverage[filename]:
                 continue
-            self._coverage[filename][lineno].remove(test)
+            self._coverage[filename][lineno].discard(test)
 
         cursor.execute("DELETE FROM coverage WHERE test = ?", [test])
 
@@ -209,13 +209,6 @@ class TestCoveragePlugin(Plugin):
         if func_name in self.pending_funcs:
             return True
         return False
-
-    # def finalize(self, result):
-    #     self.logger.info("Saving coverage data to %s", COVERAGE_DATA_FILE)
-    #     s = time.time()
-    #     with gzip.open(COVERAGE_DATA_FILE, 'wb') as fp:
-    #         pickle.dump(self.test_coverage, fp, 1)
-    #     self.logger.info("Saved coverage data in %.2fs", time.time() - s)
 
     def startTest(self, test):
         self.coverage = coverage(include='disqus/*')
