@@ -3,6 +3,7 @@ from __future__ import absolute_import
 import logging
 import os
 import sqlite3
+import sys
 import time
 import traceback
 
@@ -230,10 +231,12 @@ class TestCoveragePlugin(Plugin):
         self.db.clear_test_coverage(test_name)
 
         for cu in rep.code_units:
+            if sys.modules[test_.__module__].__file__ == cu.filename:
+                continue
+            filename = cu.name + '.py'
             try:
                 # TODO: this CANT work in all cases, must be a better way
                 analysis = rep.coverage._analyze(cu)
-                filename = cu.name + '.py'
                 self.db.set_test_coverage(test_name, filename, analysis.statements)
             except KeyboardInterrupt:                       # pragma: no cover
                 raise
