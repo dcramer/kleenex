@@ -1,10 +1,8 @@
 from __future__ import absolute_import
 
-import cPickle as pickle
-import gzip
 import logging
 import os
-import sys
+import sqlite3
 import time
 import traceback
 
@@ -12,9 +10,10 @@ from coverage import coverage
 from coverage.report import Reporter
 from nose.plugins.base import Plugin
 from nose_bleed.diff import DiffParser
+from operator import or_
 from subprocess import Popen, PIPE, STDOUT
 
-COVERAGE_DATA_FILE = 'coverage.db.gz'
+COVERAGE_DATA_FILE = 'coverage.db'
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
@@ -28,6 +27,85 @@ def is_py_script(filename):
             return "#!" in first_line and "python" in first_line
         except StopIteration:
             return False
+
+def upgrade_database(conn):
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS coverage (
+      id INTEGER PRIMARY KEY,
+      filename TEXT,
+      lineno INTEGER,
+      test TEXT,
+      UNIQUE (filename, lineno, test)
+    )
+    """)
+    cursor.execute("""
+    CREATE INDEX IF NOT EXISTS
+      coverage_test ON coverage (test)
+    """)
+    cursor.close()
+
+class TestCoverageDB(object):
+    def __init__(self, conn):
+        self.conn = conn
+        self._coverage = {}
+
+    def has_test_coverage(self, filename):
+        if filename not in self._coverage:
+            self._coverage[filename] = file_cover = {}
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT lineno, test FROM coverage WHERE filename = ?", [filename])
+            for lineno, test in cursor.fetchall():
+                file_cover.setdefault(lineno, set()).add(test)
+            self.conn.commit()
+            cursor.close()
+        return bool(self._coverage[filename])
+
+    def get_test_coverage(self, filename, linenos):
+        if filename not in self._coverage:
+            self._coverage[filename] = file_cover = {}
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT lineno, test FROM coverage WHERE filename = ? and lineno IN (%s)" % ', '.join(map(int, linenos)), [filename])
+            for lineno, test in cursor.fetchall():
+                file_cover.setdefault(lineno, set()).add(test)
+            self.conn.commit()
+            cursor.close()
+        return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
+
+    def clear_test_coverage(self, test):
+        cursor = self.conn.cursor()
+
+        # clean up existing tests
+        cursor.execute("SELECT filename, lineno FROM coverage WHERE test = ?", [test])
+        for filename, lineno in cursor.fetchall():
+            if filename not in self._coverage:
+                continue
+            if lineno not in self._coverage[filename]:
+                continue
+            self._coverage[filename][lineno].remove(test)
+
+        cursor.execute("DELETE FROM coverage WHERE test = ?", [test])
+
+        self.conn.commit()
+
+        cursor.close()
+
+    def set_test_coverage(self, test, filename, linenos):
+        if filename not in self._coverage:
+            self._coverage[filename] = file_cover = {}
+        else:
+            file_cover = self._coverage[filename]
+
+        cursor = self.conn.cursor()
+
+        # add new data
+        for lineno in linenos:
+            file_cover.setdefault(lineno, set()).add(test)
+            cursor.execute("INSERT INTO coverage (filename, lineno, test) VALUES(?, ?, ?)", [filename, lineno, test])
+
+        self.conn.commit()
+
+        cursor.close()
 
 class TestCoveragePlugin(Plugin):
     """
@@ -63,17 +141,15 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
 
     def begin(self):
-        if os.path.exists(COVERAGE_DATA_FILE):
-            self.logger.info("Loading pickled coverage data from %s..", COVERAGE_DATA_FILE)
-            s = time.time()
-            with gzip.open(COVERAGE_DATA_FILE, 'rb') as fp:
-                self.test_coverage = pickle.load(fp)
-            self.logger.info("Loaded coverage data in %.2fs", time.time() - s)
-
-        elif self.discover:
+        db_exists = os.path.exists(COVERAGE_DATA_FILE)
+        if not db_exists and self.discover:
             raise ValueError('You cannot use --discover without having done --record-test-coverage first.')
-        else:
-            self.test_coverage = {}
+
+        conn = sqlite3.connect(COVERAGE_DATA_FILE)
+
+        upgrade_database(conn)
+
+        self.db = TestCoverageDB(conn)
 
         if not self.discover:
             return
@@ -112,23 +188,17 @@ class TestCoveragePlugin(Plugin):
             if not is_py_script(filename):
                 continue
 
-            if filename not in self.test_coverage:
+            if not self.db.has_test_coverage(filename):
                 if self.skip_missing:
                     self.logger.warning('%s has no test coverage recorded', filename)
                     continue
                 raise AssertionError("Missing test coverage for %s" % filename)
 
             for chunk in file['chunks']:
-                lineiter = iter(chunk)
-                try:
-                    while True:
-                        line = lineiter.next()
-                        lineno = line['old_lineno']
-                        if lineno in self.test_coverage[filename]:
-                            pending_funcs.update(self.test_coverage[filename][lineno])
-                except StopIteration:
-                    pass
-        self.logger.info("Determined available coverage in %.2fs", time.time() - s)
+                linenos = [l['old_lineno'] for l in chunk]
+                pending_funcs.update(self.db.get_test_coverage(filename, linenos))
+
+        self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
     def wantMethod(self, method):
         if not self.discover:
@@ -140,12 +210,12 @@ class TestCoveragePlugin(Plugin):
             return True
         return False
 
-    def finalize(self, result):
-        self.logger.info("Saving coverage data to %s", COVERAGE_DATA_FILE)
-        s = time.time()
-        with gzip.open(COVERAGE_DATA_FILE, 'wb') as fp:
-            pickle.dump(self.test_coverage, fp, 1)
-        self.logger.info("Saved coverage data in %.2fs", time.time() - s)
+    # def finalize(self, result):
+    #     self.logger.info("Saving coverage data to %s", COVERAGE_DATA_FILE)
+    #     s = time.time()
+    #     with gzip.open(COVERAGE_DATA_FILE, 'wb') as fp:
+    #         pickle.dump(self.test_coverage, fp, 1)
+    #     self.logger.info("Saved coverage data in %.2fs", time.time() - s)
 
     def startTest(self, test):
         self.coverage = coverage(include='disqus/*')
@@ -158,27 +228,20 @@ class TestCoveragePlugin(Plugin):
         test_ = test.test
         test_name = '%s:%s.%s' % (test_.__class__.__module__, test_.__class__.__name__,
                                                      test_._testMethodName)
-
-        units = self.test_coverage
-
         # initialize reporter
         rep = Reporter(cov)
 
         # process all files
         rep.find_code_units(None, cov.config)
 
+        self.db.clear_test_coverage(test_name)
+
         for cu in rep.code_units:
             try:
                 # TODO: this CANT work in all cases, must be a better way
                 analysis = rep.coverage._analyze(cu)
                 filename = cu.name + '.py'
-                if filename not in units:
-                    units[filename] = {}
-                for lineno in analysis.statements:
-                    if lineno not in units[filename]:
-                        units[filename][lineno] = set([test_name])
-                    else:
-                        units[filename][lineno].add(test_name)
+                self.db.set_test_coverage(test_name, filename, analysis.statements)
             except KeyboardInterrupt:                       # pragma: no cover
                 raise
             except:
