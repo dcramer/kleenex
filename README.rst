@@ -21,5 +21,5 @@ Recording Test Coverage
 -----------------------
 
 In order to utilize selective test runner, you're going to need to continually populate a coverage database.
-Generally the best way to do this is to have something like your CI server, always run with --record-test-coverage
+Generally the best way to do this is to have something like your CI server always run with --record-test-coverage
 on your master (develop) branch.
