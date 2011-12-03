@@ -2,10 +2,10 @@ from __future__ import absolute_import
 
 import logging
 import os
-import sqlite3
 import sys
 import time
 import traceback
+import urlparse
 
 from coverage import coverage
 from coverage.report import Reporter
@@ -13,8 +13,6 @@ from nose.plugins.base import Plugin
 from nose_bleed.diff import DiffParser
 from operator import or_
 from subprocess import Popen, PIPE, STDOUT
-
-COVERAGE_DATA_FILE = 'coverage.db'
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
@@ -117,7 +115,7 @@ class TestCoverageDB(object):
 class TestCoveragePlugin(Plugin):
     """
     Monitors tests to discover which tests cover which
-    lines of code. Serializes results to ``COVERAGE_DATA_FILE``.
+    lines of code.
 
     We find the diff with the parent revision for diff-tests with::
 
@@ -130,28 +128,66 @@ class TestCoveragePlugin(Plugin):
     """
     score = 0
 
+    def _parse_dsn(self, dsn):
+        parts = urlparse.urlparse(dsn)
+
+        if parts.scheme not in ('sqlite', 'postgres'):
+            raise ValueError('Invalid engine for --coverage-dsn: %r' % parts.scheme)
+        return parts
+
+    def _connect_db(self):
+        dsn = self.dsn
+        engine = dsn.scheme
+        if engine == 'sqlite':
+            import sqlite3
+            conn = sqlite3.connect(dsn.netloc)
+        elif engine == 'postgres':
+            import psycopg2
+            conn = psycopg2.connect(host=dsn.hostname, port=dsn.port, user=dsn.username, password=dsn.password, database=dsn.path[1:])
+        return conn
+
+    def _get_name_from_test(self, test):
+        test_method_name = test._testMethodName
+
+        # We need to determine the *actual* test path (as thats what nose gives us in wantMethod)
+        # for example, maybe a test was imported in foo.bar.tests, but originated as foo.bar.something.MyTest
+        # in this case, we'd need to identify that its *actually* foo.bar.something.MyTest to record the
+        # proper coverage
+        test_ = getattr(sys.modules[test.__module__], test.__class__.__name__)
+
+        test_name = '%s:%s.%s' % (test_.__module__, test_.__name__,
+                                                     test_method_name)
+
+        return test_name
+
     def options(self, parser, env):
-        parser.add_option("--no-test-coverage",
-                          dest="record_test_coverage", action="store_false",
-                          default=True)
+        parser.add_option("--record-test-coverage",
+                          dest="record_test_coverage", action="store_true",
+                          default=False)
 
         parser.add_option("--skip-missing-coverage",
                           dest="skip_missing_coverage", action="store_true",
                           default=None)
 
-        parser.add_option("--no-discover",
+        parser.add_option("--no-coverage-discovery",
                           dest="discover", action="store_false",
                           default=True)
+
+        parser.add_option("--coverage-dsn",
+                          dest="coverage_dsn",
+                          default='sqlite://coverage.db')
 
     def configure(self, options, config):
         self.enabled = (options.record_test_coverage or options.discover)
         self.skip_missing = options.skip_missing_coverage
+        self.record = options.record_test_coverage
         self.discover = options.discover
         self.logger = logging.getLogger(__name__)
+        self.dsn = self._parse_dsn(options.coverage_dsn)
         self.parent = 'origin/master'
 
     def begin(self):
-        conn = sqlite3.connect(COVERAGE_DATA_FILE)
+        conn = self._connect_db()
 
         upgrade_database(conn)
 
@@ -225,25 +261,17 @@ class TestCoveragePlugin(Plugin):
 
         return False
 
-    def _get_name_from_test(self, test):
-        test_method_name = test._testMethodName
-
-        # We need to determine the *actual* test path (as thats what nose gives us in wantMethod)
-        # for example, maybe a test was imported in foo.bar.tests, but originated as foo.bar.something.MyTest
-        # in this case, we'd need to identify that its *actually* foo.bar.something.MyTest to record the
-        # proper coverage
-        test_ = getattr(sys.modules[test.__module__], test.__class__.__name__)
-
-        test_name = '%s:%s.%s' % (test_.__module__, test_.__name__,
-                                                     test_method_name)
-
-        return test_name
-
     def startTest(self, test):
+        if not self.record:
+            return
+
         self.coverage = coverage(include='disqus/*')
         self.coverage.start()
 
     def stopTest(self, test):
+        if not self.record:
+            return
+
         cov = self.coverage
         cov.stop()
 
