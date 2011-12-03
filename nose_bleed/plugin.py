@@ -131,17 +131,17 @@ class TestCoveragePlugin(Plugin):
     score = 0
 
     def options(self, parser, env):
-        parser.add_option("--record-test-coverage",
-                          dest="record_test_coverage", action="store_true",
-                          default=None)
+        parser.add_option("--no-test-coverage",
+                          dest="record_test_coverage", action="store_false",
+                          default=True)
 
         parser.add_option("--skip-missing-coverage",
                           dest="skip_missing_coverage", action="store_true",
                           default=None)
 
-        parser.add_option("--discover",
-                          dest="discover", action="store_true",
-                          default=None)
+        parser.add_option("--no-discover",
+                          dest="discover", action="store_false",
+                          default=True)
 
     def configure(self, options, config):
         self.enabled = (options.record_test_coverage or options.discover)
@@ -229,6 +229,20 @@ class TestCoveragePlugin(Plugin):
 
         return False
 
+    def _get_name_from_test(self, test):
+        test_method_name = test._testMethodName
+
+        # We need to determine the *actual* test path (as thats what nose gives us in wantMethod)
+        # for example, maybe a test was imported in foo.bar.tests, but originated as foo.bar.something.MyTest
+        # in this case, we'd need to identify that its *actually* foo.bar.something.MyTest to record the
+        # proper coverage
+        test_ = getattr(sys.modules[test.__module__], test.__class__.__name__)
+
+        test_name = '%s:%s.%s' % (test_.__module__, test_.__name__,
+                                                     test_method_name)
+
+        return test_name
+
     def startTest(self, test):
         self.coverage = coverage(include='disqus/*')
         self.coverage.start()
@@ -238,16 +252,7 @@ class TestCoveragePlugin(Plugin):
         cov.stop()
 
         test_ = test.test
-        test_method_name = test_._testMethodName
-
-        # We need to determine the *actual* test path (as thats what nose gives us in wantMethod)
-        # for example, maybe a test was imported in foo.bar.tests, but originated as foo.bar.something.MyTest
-        # in this case, we'd need to identify that its *actually* foo.bar.something.MyTest to record the
-        # proper coverage
-        test_ = getattr(sys.modules[test_.__module__], test_.__class__.__name__)
-
-        test_name = '%s:%s.%s' % (test_.__module__, test_.__name__,
-                                                     test_method_name)
+        test_name = self._get_name_from_test(test_)
 
         # this must have been imported under a different name
         if test_name not in self.pending_funcs:
