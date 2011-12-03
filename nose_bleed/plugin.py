@@ -151,10 +151,6 @@ class TestCoveragePlugin(Plugin):
         self.parent = 'origin/master'
 
     def begin(self):
-        db_exists = os.path.exists(COVERAGE_DATA_FILE)
-        if not db_exists and self.discover:
-            raise ValueError('You cannot use --discover without having done --record-test-coverage first.')
-
         conn = sqlite3.connect(COVERAGE_DATA_FILE)
 
         upgrade_database(conn)
