@@ -51,6 +51,16 @@ class TestCoverageDB(object):
         self.conn = conn
         self._coverage = {}
 
+    def has_seen_test(self, test):
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT 1 FROM coverage WHERE test = ? LIMIT 1", [test])
+        result = bool(cursor.fetchall())
+        self.commit()
+        return result
+
+    def commit(self):
+        self.conn.commit()
+
     def has_test_coverage(self, filename):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
@@ -58,8 +68,7 @@ class TestCoverageDB(object):
             cursor.execute("SELECT lineno, test FROM coverage WHERE filename = ?", [filename])
             for lineno, test in cursor.fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
-            self.conn.commit()
-            cursor.close()
+            self.commit()
         return bool(self._coverage[filename])
 
     def get_test_coverage(self, filename, linenos):
@@ -69,11 +78,10 @@ class TestCoverageDB(object):
             cursor.execute("SELECT lineno, test FROM coverage WHERE filename = ? and lineno IN (%s)" % ', '.join(map(int, linenos)), [filename])
             for lineno, test in cursor.fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
-            self.conn.commit()
-            cursor.close()
+            self.commit()
         return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
 
-    def clear_test_coverage(self, test):
+    def clear_test_coverage(self, test, commit=False):
         cursor = self.conn.cursor()
 
         # clean up existing tests
@@ -87,11 +95,10 @@ class TestCoverageDB(object):
 
         cursor.execute("DELETE FROM coverage WHERE test = ?", [test])
 
-        self.conn.commit()
+        if commit:
+            self.commit()
 
-        cursor.close()
-
-    def set_test_coverage(self, test, filename, linenos):
+    def set_test_coverage(self, test, filename, linenos, commit=False):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
         else:
@@ -102,11 +109,10 @@ class TestCoverageDB(object):
         # add new data
         for lineno in linenos:
             file_cover.setdefault(lineno, set()).add(test)
-            cursor.execute("INSERT INTO coverage (filename, lineno, test) VALUES(?, ?, ?)", [filename, lineno, test])
+            cursor.execute("INSERT OR IGNORE INTO coverage (filename, lineno, test) VALUES(?, ?, ?)", [filename, lineno, test])
 
-        self.conn.commit()
-
-        cursor.close()
+        if commit:
+            self.commit()
 
 class TestCoveragePlugin(Plugin):
     """
@@ -115,13 +121,15 @@ class TestCoveragePlugin(Plugin):
 
     We find the diff with the parent revision for diff-tests with::
 
-        git diff `git merge-base HEAD origin/master`
+        git diff origin/master
 
     If you run with the --discover flag, it will attempt to discovery
     any tests that are required to run to test the changes in your current
     branch, against those of origin/master.
 
     """
+    score = 0
+
     def options(self, parser, env):
         parser.add_option("--record-test-coverage",
                           dest="record_test_coverage", action="store_true",
@@ -140,6 +148,7 @@ class TestCoveragePlugin(Plugin):
         self.skip_missing = options.skip_missing_coverage
         self.discover = options.discover
         self.logger = logging.getLogger(__name__)
+        self.parent = 'origin/master'
 
     def begin(self):
         db_exists = os.path.exists(COVERAGE_DATA_FILE)
@@ -155,17 +164,15 @@ class TestCoveragePlugin(Plugin):
         if not self.discover:
             return
 
+        s = time.time()
+        self.logger.info("Parsing diff from parent %s", self.parent)
         # pull in our diff
         # git diff `git merge-base HEAD master`
-        proc = Popen('git merge-base HEAD origin/master'.split(), stdout=PIPE, stderr=STDOUT)
-        parent = proc.stdout.read().strip()
-        proc = Popen(('git diff %s' % parent).split(), stdout=PIPE, stderr=STDOUT)
+        proc = Popen(['git', 'diff', self.parent], stdout=PIPE, stderr=STDOUT)
         diff = proc.stdout.read()
 
-        pending_funcs = self.pending_funcs = set()
+        pending_funcs = self.pending_funcs = {}
 
-        self.logger.info("Parsing diff from parent %s", parent)
-        s = time.time()
         parser = DiffParser(diff)
         files = list(parser.parse())
         self.logger.info("Parsed diff in %.2fs", time.time() - s)
@@ -189,6 +196,7 @@ class TestCoveragePlugin(Plugin):
             if not is_py_script(filename):
                 continue
 
+            # TODO: for this to be useful we need to eliminate tests
             if not self.db.has_test_coverage(filename):
                 if self.skip_missing:
                     self.logger.warning('%s has no test coverage recorded', filename)
@@ -197,7 +205,8 @@ class TestCoveragePlugin(Plugin):
 
             for chunk in file['chunks']:
                 linenos = [l['old_lineno'] for l in chunk]
-                pending_funcs.update(self.db.get_test_coverage(filename, linenos))
+                for test in self.db.get_test_coverage(filename, linenos):
+                    pending_funcs[test] = None
 
         self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
@@ -206,9 +215,18 @@ class TestCoveragePlugin(Plugin):
             return
 
         # only works with unittest compatible functions currently
-        func_name = '%s:%s.%s' % (method.im_class.__module__, method.im_class.__name__, method.__name__)
-        if func_name in self.pending_funcs:
+        test_name = '%s:%s.%s' % (method.im_class.__module__, method.im_class.__name__, method.__name__)
+
+        # test has coverage for diff
+        if test_name in self.pending_funcs:
             return True
+
+        # test has no coverage recorded, defer to other plugins
+        elif not self.db.has_seen_test(test_name):
+            self.pending_funcs[test_name] = None
+            self.logger.info("Allowing test due to missing coverage report: %s", test_name)
+            return None
+
         return False
 
     def startTest(self, test):
@@ -220,15 +238,30 @@ class TestCoveragePlugin(Plugin):
         cov.stop()
 
         test_ = test.test
-        test_name = '%s:%s.%s' % (test_.__class__.__module__, test_.__class__.__name__,
-                                                     test_._testMethodName)
+        test_method_name = test_._testMethodName
+
+        # We need to determine the *actual* test path (as thats what nose gives us in wantMethod)
+        # for example, maybe a test was imported in foo.bar.tests, but originated as foo.bar.something.MyTest
+        # in this case, we'd need to identify that its *actually* foo.bar.something.MyTest to record the
+        # proper coverage
+        test_ = getattr(sys.modules[test_.__module__], test_.__class__.__name__)
+
+        test_name = '%s:%s.%s' % (test_.__module__, test_.__name__,
+                                                     test_method_name)
+
+        # this must have been imported under a different name
+        if test_name not in self.pending_funcs:
+            self.logger.warning("Unable to determine origin for test: %s", test_name)
+            return
+
         # initialize reporter
         rep = Reporter(cov)
 
         # process all files
         rep.find_code_units(None, cov.config)
 
-        self.db.clear_test_coverage(test_name)
+        # The rest of this is all run within a single transaction
+        self.db.clear_test_coverage(test_name, commit=False)
 
         for cu in rep.code_units:
             if sys.modules[test_.__module__].__file__ == cu.filename:
@@ -237,9 +270,11 @@ class TestCoveragePlugin(Plugin):
             try:
                 # TODO: this CANT work in all cases, must be a better way
                 analysis = rep.coverage._analyze(cu)
-                self.db.set_test_coverage(test_name, filename, analysis.statements)
+                self.db.set_test_coverage(test_name, filename, analysis.statements, commit=False)
             except KeyboardInterrupt:                       # pragma: no cover
                 raise
             except:
                 traceback.print_exc()
+
+        self.db.commit()
 
