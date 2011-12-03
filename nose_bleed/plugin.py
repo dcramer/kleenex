@@ -161,6 +161,10 @@ class TestCoveragePlugin(Plugin):
         return test_name
 
     def options(self, parser, env):
+        parser.add_option('--coverage-parent',
+                          dest="coverage_parent",
+                          default="origin/master")
+
         parser.add_option("--record-test-coverage",
                           dest="record_test_coverage", action="store_true",
                           default=False)
@@ -184,7 +188,7 @@ class TestCoveragePlugin(Plugin):
         self.discover = options.discover
         self.logger = logging.getLogger(__name__)
         self.dsn = self._parse_dsn(options.coverage_dsn)
-        self.parent = 'origin/master'
+        self.parent = options.coverage_parent
 
     def begin(self):
         conn = self._connect_db()
