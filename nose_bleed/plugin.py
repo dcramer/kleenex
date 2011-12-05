@@ -136,6 +136,8 @@ class TestCoveragePlugin(Plugin):
         return parts
 
     def _connect_db(self):
+        self.logger.info('Connecting to coverage database..')
+        s = time.time()
         dsn = self.dsn
         engine = dsn.scheme
         if engine == 'sqlite':
@@ -143,7 +145,15 @@ class TestCoveragePlugin(Plugin):
             conn = sqlite3.connect(dsn.netloc)
         elif engine == 'postgres':
             import psycopg2
-            conn = psycopg2.connect(host=dsn.hostname, port=dsn.port, user=dsn.username, password=dsn.password, database=dsn.path[1:])
+            kwargs = dict(filter(lambda x: x[1], (
+                ('host', dsn.hostname),
+                ('port', dsn.port),
+                ('user', dsn.username),
+                ('password', dsn.password),
+                ('database', dsn.path[1:]),
+            )))
+            conn = psycopg2.connect(**kwargs)
+        self.logger.info('Connection established to coverage database in %.2fs', time.time() - s)
         return conn
 
     def _get_name_from_test(self, test):
