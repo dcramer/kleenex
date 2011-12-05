@@ -5,7 +5,6 @@ import os
 import sys
 import time
 import traceback
-import urlparse
 
 from coverage import coverage
 from coverage.report import Reporter
@@ -13,6 +12,9 @@ from nose.plugins.base import Plugin
 from nose_bleed.diff import DiffParser
 from operator import or_
 from subprocess import Popen, PIPE, STDOUT
+from sqlalchemy import create_engine, Table, MetaData, Integer, String, \
+  Column
+from sqlalchemy.sql import select
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
@@ -27,44 +29,45 @@ def is_py_script(filename):
         except StopIteration:
             return False
 
-def upgrade_database(conn):
-    cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS coverage (
-      id INTEGER PRIMARY KEY,
-      filename TEXT,
-      lineno INTEGER,
-      test TEXT,
-      UNIQUE (filename, lineno, test)
-    )
-    """)
-    cursor.execute("""
-    CREATE INDEX IF NOT EXISTS
-      coverage_test ON coverage (test)
-    """)
-    cursor.close()
+metadata = MetaData()
+Coverage = Table('coverage', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('filename', String),
+    Column('lineno', Integer),
+    Column('test', String, index=True)
+)
 
 class TestCoverageDB(object):
-    def __init__(self, conn):
-        self.conn = conn
+    def __init__(self, dsn, logger):
+        self.logger = logger
+        self.engine = create_engine(dsn)
+        self.conn = self._connect_db()
+
         self._coverage = {}
 
-    def has_seen_test(self, test):
-        cursor = self.conn.cursor()
-        cursor.execute("SELECT 1 FROM coverage WHERE test = ? LIMIT 1", [test])
-        result = bool(cursor.fetchall())
-        self.commit()
-        return result
+    def _connect_db(self):
+        self.logger.info('Connecting to coverage database..')
+        s = time.time()
+        conn = self.engine.connect()
+        self.logger.info('Connection established to coverage database in %.2fs', time.time() - s)
+        return conn
 
-    def commit(self):
-        self.conn.commit()
+    def upgrade(self):
+        metadata.create_all(self.conn)
+
+    def begin(self):
+        return self.conn.begin()
+
+    def has_seen_test(self, test):
+        statement = select([Coverage.c.id], Coverage.c.test == test, limit=1)
+        result = bool(self.conn.execute(statement).fetchall())
+        return result
 
     def has_test_coverage(self, filename):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT lineno, test FROM coverage WHERE filename = ?", [filename])
-            for lineno, test in cursor.fetchall():
+            statement = select([Coverage.c.lineno, Coverage.c.test], Coverage.c.filename == filename)
+            for lineno, test in self.conn.execute(statement).fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
             self.commit()
         return bool(self._coverage[filename])
@@ -72,45 +75,33 @@ class TestCoverageDB(object):
     def get_test_coverage(self, filename, linenos):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
-            cursor = self.conn.cursor()
-            cursor.execute("SELECT lineno, test FROM coverage WHERE filename = ? and lineno IN (%s)" % ', '.join(map(int, linenos)), [filename])
-            for lineno, test in cursor.fetchall():
+            statement = select([Coverage.c.lineno, Coverage.c.test], Coverage.c.filename == filename, Coverage.c.lineno.in_(linenos))
+            for lineno, test in self.conn.execute(statement).fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
-            self.commit()
         return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
 
-    def clear_test_coverage(self, test, commit=False):
-        cursor = self.conn.cursor()
-
+    def clear_test_coverage(self, test):
         # clean up existing tests
-        cursor.execute("SELECT filename, lineno FROM coverage WHERE test = ?", [test])
-        for filename, lineno in cursor.fetchall():
+        statement = select([Coverage.c.lineno, Coverage.c.test], Coverage.c.test==test)
+        for filename, lineno in self.conn.execute(statement).fetchall():
             if filename not in self._coverage:
                 continue
             if lineno not in self._coverage[filename]:
                 continue
             self._coverage[filename][lineno].discard(test)
 
-        cursor.execute("DELETE FROM coverage WHERE test = ?", [test])
+        self.conn.execute(Coverage.delete().where(Coverage.c.test == test))
 
-        if commit:
-            self.commit()
-
-    def set_test_coverage(self, test, filename, linenos, commit=False):
+    def set_test_coverage(self, test, filename, linenos):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
         else:
             file_cover = self._coverage[filename]
 
-        cursor = self.conn.cursor()
-
         # add new data
         for lineno in linenos:
             file_cover.setdefault(lineno, set()).add(test)
-            cursor.execute("INSERT OR IGNORE INTO coverage (filename, lineno, test) VALUES(?, ?, ?)", [filename, lineno, test])
-
-        if commit:
-            self.commit()
+            self.conn.execute(Coverage.insert().values(filename=filename, lineno=lineno, test=test))
 
 class TestCoveragePlugin(Plugin):
     """
@@ -127,34 +118,6 @@ class TestCoveragePlugin(Plugin):
 
     """
     score = 0
-
-    def _parse_dsn(self, dsn):
-        parts = urlparse.urlparse(dsn)
-
-        if parts.scheme not in ('sqlite', 'postgres'):
-            raise ValueError('Invalid engine for --coverage-dsn: %r' % parts.scheme)
-        return parts
-
-    def _connect_db(self):
-        self.logger.info('Connecting to coverage database..')
-        s = time.time()
-        dsn = self.dsn
-        engine = dsn.scheme
-        if engine == 'sqlite':
-            import sqlite3
-            conn = sqlite3.connect(dsn.netloc)
-        elif engine == 'postgres':
-            import psycopg2
-            kwargs = dict(filter(lambda x: x[1], (
-                ('host', dsn.hostname),
-                ('port', dsn.port),
-                ('user', dsn.username),
-                ('password', dsn.password),
-                ('database', dsn.path[1:]),
-            )))
-            conn = psycopg2.connect(**kwargs)
-        self.logger.info('Connection established to coverage database in %.2fs', time.time() - s)
-        return conn
 
     def _get_name_from_test(self, test):
         test_method_name = test._testMethodName
@@ -179,8 +142,16 @@ class TestCoveragePlugin(Plugin):
                           dest="record_test_coverage", action="store_true",
                           default=False)
 
+        parser.add_option("--no-record-test-coverage",
+                          dest="record_test_coverage", action="store_false",
+                          default=False)
+
         parser.add_option("--skip-missing-coverage",
                           dest="skip_missing_coverage", action="store_true",
+                          default=None)
+
+        parser.add_option("--no-skip-missing-coverage",
+                          dest="skip_missing_coverage", action="store_false",
                           default=None)
 
         parser.add_option("--no-coverage-discovery",
@@ -189,7 +160,7 @@ class TestCoveragePlugin(Plugin):
 
         parser.add_option("--coverage-dsn",
                           dest="coverage_dsn",
-                          default='sqlite://coverage.db')
+                          default='sqlite:///coverage.db')
 
     def configure(self, options, config):
         self.enabled = (options.record_test_coverage or options.discover)
@@ -197,16 +168,15 @@ class TestCoveragePlugin(Plugin):
         self.record = options.record_test_coverage
         self.discover = options.discover
         self.logger = logging.getLogger(__name__)
-        self.dsn = self._parse_dsn(options.coverage_dsn)
+        self.dsn = options.coverage_dsn
         self.parent = options.coverage_parent
         self.pending_funcs = {}
 
     def begin(self):
-        conn = self._connect_db()
-
-        upgrade_database(conn)
-
-        self.db = TestCoverageDB(conn)
+        # XXX: this is pretty hacky
+        self.db = TestCoverageDB(self.dsn, self.logger)
+        if self.record:
+            self.db.upgrade()
 
         if not self.discover:
             return
@@ -305,7 +275,9 @@ class TestCoveragePlugin(Plugin):
         rep.find_code_units(None, cov.config)
 
         # The rest of this is all run within a single transaction
-        self.db.clear_test_coverage(test_name, commit=False)
+        trans = self.db.begin()
+
+        self.db.clear_test_coverage(test_name)
 
         for cu in rep.code_units:
             if sys.modules[test_.__module__].__file__ == cu.filename:
@@ -314,11 +286,11 @@ class TestCoveragePlugin(Plugin):
             try:
                 # TODO: this CANT work in all cases, must be a better way
                 analysis = rep.coverage._analyze(cu)
-                self.db.set_test_coverage(test_name, filename, analysis.statements, commit=False)
+                self.db.set_test_coverage(test_name, filename, analysis.statements)
             except KeyboardInterrupt:                       # pragma: no cover
                 raise
             except:
                 traceback.print_exc()
 
-        self.db.commit()
+        trans.commit()
 

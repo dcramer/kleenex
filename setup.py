@@ -16,6 +16,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'nose>=0.9',
+        'SQLAlchemy>=0.7',
     ],
     entry_points={
        'nose.plugins.0.10': [
