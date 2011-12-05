@@ -170,7 +170,7 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
         self.dsn = options.coverage_dsn
         self.parent = options.coverage_parent
-        self.pending_funcs = {}
+        self.pending_funcs = set()
 
     def begin(self):
         # XXX: this is pretty hacky
@@ -223,7 +223,7 @@ class TestCoveragePlugin(Plugin):
             for chunk in file['chunks']:
                 linenos = [l['old_lineno'] for l in chunk]
                 for test in self.db.get_test_coverage(filename, linenos):
-                    pending_funcs[test] = None
+                    pending_funcs.add(test)
 
         self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
@@ -240,7 +240,7 @@ class TestCoveragePlugin(Plugin):
 
         # test has no coverage recorded, defer to other plugins
         elif not self.db.has_seen_test(test_name):
-            self.pending_funcs[test_name] = None
+            self.pending_funcs.add(test_name)
             self.logger.info("Allowing test due to missing coverage report: %s", test_name)
             return None
 
