@@ -189,6 +189,7 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
         self.dsn = self._parse_dsn(options.coverage_dsn)
         self.parent = options.coverage_parent
+        self.pending_funcs = {}
 
     def begin(self):
         conn = self._connect_db()
@@ -207,7 +208,7 @@ class TestCoveragePlugin(Plugin):
         proc = Popen(['git', 'diff', self.parent], stdout=PIPE, stderr=STDOUT)
         diff = proc.stdout.read()
 
-        pending_funcs = self.pending_funcs = {}
+        pending_funcs = self.pending_funcs
 
         parser = DiffParser(diff)
         files = list(parser.parse())
@@ -283,7 +284,7 @@ class TestCoveragePlugin(Plugin):
         test_name = self._get_name_from_test(test_)
 
         # this must have been imported under a different name
-        if test_name not in self.pending_funcs:
+        if self.discover and test_name not in self.pending_funcs:
             self.logger.warning("Unable to determine origin for test: %s", test_name)
             return
 
