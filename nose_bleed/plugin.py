@@ -13,7 +13,7 @@ from nose_bleed.diff import DiffParser
 from operator import or_
 from subprocess import Popen, PIPE, STDOUT
 from sqlalchemy import create_engine, Table, MetaData, Integer, String, \
-  Column
+  Column, UniqueConstraint
 from sqlalchemy.sql import select
 
 def is_py_script(filename):
@@ -34,7 +34,8 @@ Coverage = Table('coverage', metadata,
     Column('id', Integer, primary_key=True),
     Column('filename', String),
     Column('lineno', Integer),
-    Column('test', String, index=True)
+    Column('test', String, index=True),
+    UniqueConstraint('filename', 'lineno', 'test'),
 )
 
 class TestCoverageDB(object):
