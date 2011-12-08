@@ -289,7 +289,7 @@ class TestCoveragePlugin(Plugin):
 
         stream.writeln('Coverage Report')
         stream.writeln('-'*70)
-        stream.writeln('Coverage against diff is %.2f%%' % (covered / float(total) * 100,))
+        stream.writeln('Coverage against diff is %.2f%% (%d / %d lines)' % (covered / float(total) * 100, covered, total))
         if missing:
             stream.writeln()
             stream.writeln('%-35s   %s' % ('Filename', 'Missing Lines'))
