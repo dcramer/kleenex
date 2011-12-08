@@ -16,6 +16,7 @@ setup(
     zip_safe=False,
     install_requires=[
         'nose>=0.9',
+        'simplejson',
         'SQLAlchemy>=0.7',
     ],
     entry_points={

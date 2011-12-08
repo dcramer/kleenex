@@ -2,6 +2,7 @@ from __future__ import absolute_import
 
 import logging
 import os
+import simplejson
 import sys
 import time
 import traceback
@@ -173,6 +174,16 @@ class TestCoveragePlugin(Plugin):
                           dest="coverage_dsn",
                           default='sqlite:///coverage.db')
 
+        parser.add_option('--with-coverage-file', action='store_true',
+                          default=False)
+
+        parser.add_option('--coverage-file', action='store',
+                          dest='coverage_file', metavar="FILE",
+                          default=env.get('NOSE_BLEED_FILE', 'nosebleed.json'),
+                          help=("Path to json file to store the report in. "
+                                "Default is nosebleed.json in the working directory "
+                                "[NOSE_BLEED_FILE]"))
+
     def configure(self, options, config):
         Plugin.configure(self, options, config)
         self.skip_missing = options.skip_missing_coverage
@@ -182,6 +193,10 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
         self.dsn = options.coverage_dsn
         self.parent = options.coverage_parent
+        self.enabled = (self.record or self.report_coverage or self.discover)
+
+        if not self.enabled:
+            return
 
         self.pending_funcs = set()
         # diff is a mapping of filename->[linenos]
@@ -189,8 +204,10 @@ class TestCoveragePlugin(Plugin):
         # cov is a mapping of filename->[linenos]
         self.cov_data = defaultdict(set)
 
-        self.enabled = (self.record or self.report_coverage or self.discover)
-
+        if options.with_coverage_file:
+            self.report_file = open(options.coverage_file, 'w')
+        else:
+            self.report_file = None
 
     def begin(self):
         # XXX: this is pretty hacky
@@ -288,20 +305,28 @@ class TestCoveragePlugin(Plugin):
             missing[filename] = linenos.difference(covered_linenos)
 
 
-        if not total:
-            return
-
-        stream.writeln('Coverage Report')
-        stream.writeln('-'*70)
-        stream.writeln('Coverage against diff is %.2f%% (%d / %d lines)' % (covered / float(total) * 100, covered, total))
-        if missing:
-            stream.writeln()
-            stream.writeln('%-35s   %s' % ('Filename', 'Missing Lines'))
+        if self.report_file:
+            self.report_file.write(simplejson.dumps({
+                'stats': {
+                    'covered': covered,
+                    'total': total,
+                },
+                'missing': dict((k, tuple(v)) for k, v in missing.iteritems() if v),
+            }))
+            self.report_file.close()
+        else:
+            stream.writeln('Coverage Report')
             stream.writeln('-'*70)
-            for filename, linenos in missing.iteritems():
-                if not linenos:
-                    continue
-                stream.writeln('%-35s   %s' % (filename, ', '.join(map(str, sorted(linenos)))))
+            stream.writeln('Coverage against diff is %.2f%% (%d / %d lines)' % (covered / float(total) * 100, covered, total))
+            if missing:
+                stream.writeln()
+                stream.writeln('%-35s   %s' % ('Filename', 'Missing Lines'))
+                stream.writeln('-'*70)
+                for filename, linenos in missing.iteritems():
+                    if not linenos:
+                        continue
+                    stream.writeln('%-35s   %s' % (filename, ', '.join(map(str, sorted(linenos)))))
+
 
     def wantMethod(self, method):
         if not self.discover:
