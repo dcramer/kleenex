@@ -8,6 +8,7 @@ import traceback
 
 from coverage import coverage
 from coverage.report import Reporter
+from collections import defaultdict
 from nose.plugins.base import Plugin
 from nose_bleed.diff import DiffParser
 from operator import or_
@@ -119,6 +120,7 @@ class TestCoveragePlugin(Plugin):
 
     """
     score = 0
+    name = 'bleed'
 
     def _get_name_from_test(self, test):
         test_method_name = test._testMethodName
@@ -147,6 +149,14 @@ class TestCoveragePlugin(Plugin):
                           dest="record_test_coverage", action="store_false",
                           default=False)
 
+        parser.add_option("--report-test-coverage",
+                          dest="report_test_coverage", action="store_true",
+                          default=False)
+
+        parser.add_option("--no-report-test-coverage",
+                          dest="report_test_coverage", action="store_false",
+                          default=False)
+
         parser.add_option("--skip-missing-coverage",
                           dest="skip_missing_coverage", action="store_true",
                           default=None)
@@ -164,14 +174,23 @@ class TestCoveragePlugin(Plugin):
                           default='sqlite:///coverage.db')
 
     def configure(self, options, config):
-        self.enabled = (options.record_test_coverage or options.discover)
+        Plugin.configure(self, options, config)
         self.skip_missing = options.skip_missing_coverage
         self.record = options.record_test_coverage
+        self.report_coverage = options.report_test_coverage
         self.discover = options.discover
         self.logger = logging.getLogger(__name__)
         self.dsn = options.coverage_dsn
         self.parent = options.coverage_parent
+
         self.pending_funcs = set()
+        # diff is a mapping of filename->[linenos]
+        self.diff_data = defaultdict(set)
+        # cov is a mapping of filename->[linenos]
+        self.cov_data = defaultdict(set)
+
+        self.enabled = (self.record or self.report_coverage or self.discover)
+
 
     def begin(self):
         # XXX: this is pretty hacky
@@ -179,7 +198,7 @@ class TestCoveragePlugin(Plugin):
         if self.record:
             self.db.upgrade()
 
-        if not self.discover:
+        if not (self.discover or self.report):
             return
 
         s = time.time()
@@ -193,20 +212,27 @@ class TestCoveragePlugin(Plugin):
 
         parser = DiffParser(diff)
         files = list(parser.parse())
-        self.logger.info("Parsed diff in %.2fs", time.time() - s)
 
-        self.logger.info("Finding coverage for %d file(s)", len(files))
+        diff = self.diff_data
         s = time.time()
         for file in files:
+            # we dont care about headers
             if file['is_header']:
                 continue
 
-            if file['old_filename'] == '/dev/null':
+            # file was removed
+            if file['new_filename'] == '/dev/null':
                 continue
 
-            filename = file['old_filename']
-            if not filename.startswith('a/'):
-                continue # ??
+            is_new_file = (file['old_filename'] == '/dev/null')
+            if is_new_file:
+                filename = file['new_filename']
+                if not filename.startswith('b/'):
+                    continue
+            else:
+                filename = file['old_filename']
+                if not filename.startswith('a/'):
+                    continue # ??
 
             filename = filename[2:]
 
@@ -214,19 +240,64 @@ class TestCoveragePlugin(Plugin):
             if not is_py_script(filename):
                 continue
 
-            # TODO: for this to be useful we need to eliminate tests
-            if not self.db.has_test_coverage(filename):
-                if self.skip_missing:
-                    self.logger.warning('%s has no test coverage recorded', filename)
-                    continue
-                raise AssertionError("Missing test coverage for %s" % filename)
-
+            # file is new, only record diff state
             for chunk in file['chunks']:
-                linenos = [l['old_lineno'] for l in chunk]
+                linenos = filter(bool, (l['new_lineno'] for l in chunk))
+                diff[file['new_filename'][2:]].update(linenos)
+
+            # we dont care about missing coverage for new code, and there
+            # wont be any "existing coverage" to check for
+            if is_new_file:
+                continue
+
+            if not self.discover:
+                continue
+
+        self.logger.info("Parsed diff in %.2fs", time.time() - s)
+
+        if self.discover:
+            self.logger.info("Finding coverage for %d file(s)", len(files))
+
+            for filename, linenos in diff.iteritems():
+                # TODO: for this to be useful we need to eliminate tests
+                if not self.db.has_test_coverage(filename):
+                    if self.skip_missing:
+                        self.logger.warning('%s has no test coverage recorded', filename)
+                        continue
+                    raise AssertionError("Missing test coverage for %s" % filename)
+
+                # record
                 for test in self.db.get_test_coverage(filename, linenos):
                     pending_funcs.add(test)
 
-        self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
+            self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
+
+    def report(self, stream):
+        if not self.report_coverage:
+            return
+
+        covered = 0
+        total = 0
+        missing = defaultdict(set)
+        for filename, linenos in self.diff_data.iteritems():
+            covered_linenos = self.cov_data[filename]
+
+            total += len(linenos)
+            covered += len(covered_linenos)
+
+            missing[filename] = linenos.difference(covered_linenos)
+
+        stream.writeln('Coverage Report')
+        stream.writeln('-'*70)
+        stream.writeln('Coverage against diff is %.2f%%' % (covered / float(total) * 100,))
+        if missing:
+            stream.writeln()
+            stream.writeln('%-35s   %s' % ('Filename', 'Missing Lines'))
+            stream.writeln('-'*70)
+            for filename, linenos in missing.iteritems():
+                if not linenos:
+                    continue
+                stream.writeln('%-35s   %s' % (filename, ', '.join(map(str, sorted(linenos)))))
 
     def wantMethod(self, method):
         if not self.discover:
@@ -248,14 +319,14 @@ class TestCoveragePlugin(Plugin):
         return False
 
     def startTest(self, test):
-        if not self.record:
+        if not (self.report_coverage or self.record):
             return
 
         self.coverage = coverage(include='disqus/*')
         self.coverage.start()
 
     def stopTest(self, test):
-        if not self.record:
+        if not (self.report_coverage or self.record):
             return
 
         cov = self.coverage
@@ -265,9 +336,9 @@ class TestCoveragePlugin(Plugin):
         test_name = self._get_name_from_test(test_)
 
         # this must have been imported under a different name
-        if self.discover and test_name not in self.pending_funcs:
-            self.logger.warning("Unable to determine origin for test: %s", test_name)
-            return
+        # if self.discover and test_name not in self.pending_funcs:
+        #     self.logger.warning("Unable to determine origin for test: %s", test_name)
+        #     return
 
         # initialize reporter
         rep = Reporter(cov)
@@ -278,16 +349,24 @@ class TestCoveragePlugin(Plugin):
         # The rest of this is all run within a single transaction
         trans = self.db.begin()
 
-        self.db.clear_test_coverage(test_name)
+        if self.record:
+            self.db.clear_test_coverage(test_name)
 
         for cu in rep.code_units:
-            if sys.modules[test_.__module__].__file__ == cu.filename:
-                continue
+            # if sys.modules[test_.__module__].__file__ == cu.filename:
+            #     continue
             filename = cu.name + '.py'
             try:
                 # TODO: this CANT work in all cases, must be a better way
                 analysis = rep.coverage._analyze(cu)
-                self.db.set_test_coverage(test_name, filename, analysis.statements)
+                linenos = analysis.statements
+                if self.record:
+                    self.db.set_test_coverage(test_name, filename, linenos)
+                if self.report_coverage:
+                    diff = self.diff_data[filename]
+                    cov_linenos = [l for l in linenos if l in diff]
+                    if cov_linenos:
+                        self.cov_data[filename].update(cov_linenos)
             except KeyboardInterrupt:                       # pragma: no cover
                 raise
             except:
