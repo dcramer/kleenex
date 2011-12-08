@@ -72,7 +72,6 @@ class TestCoverageDB(object):
             statement = select([Coverage.c.lineno, Coverage.c.test], Coverage.c.filename == filename)
             for lineno, test in self.conn.execute(statement).fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
-            self.commit()
         return bool(self._coverage[filename])
 
     def get_test_coverage(self, filename, linenos):
