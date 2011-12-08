@@ -332,7 +332,9 @@ class TestCoveragePlugin(Plugin):
             return
 
         # only works with unittest compatible functions currently
-        test_name = '%s:%s.%s' % (method.im_class.__module__, method.im_class.__name__, method.__name__)
+        method_name = method.__name__
+        method = getattr(sys.modules[method.im_class.__module__], method.im_class.__name__)
+        test_name = '%s:%s.%s' % (method.__module__, method.__name__, method_name)
 
         # test has coverage for diff
         if test_name in self.pending_funcs:
