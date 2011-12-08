@@ -120,7 +120,7 @@ class TestCoveragePlugin(Plugin):
 
     """
     score = 0
-    name = 'bleed'
+    name = 'nosebleed'
 
     def _get_name_from_test(self, test):
         test_method_name = test._testMethodName
@@ -137,46 +137,52 @@ class TestCoveragePlugin(Plugin):
         return test_name
 
     def options(self, parser, env):
-        parser.add_option('--coverage-parent',
+        Plugin.options(self, parser, env)
+        parser.add_option('--nosebleed-parent',
                           dest="coverage_parent",
                           default="origin/master")
 
-        parser.add_option("--record-test-coverage",
+        parser.add_option("--nosebleed-record",
                           dest="record_test_coverage", action="store_true",
                           default=False)
 
-        parser.add_option("--no-record-test-coverage",
+        parser.add_option("--no-nosebleed-record",
                           dest="record_test_coverage", action="store_false",
                           default=False)
 
-        parser.add_option("--report-test-coverage",
+        parser.add_option("--nosebleed-report",
                           dest="report_test_coverage", action="store_true",
                           default=False)
 
-        parser.add_option("--no-report-test-coverage",
+        parser.add_option("--no-nosebleed-report",
                           dest="report_test_coverage", action="store_false",
                           default=False)
 
-        parser.add_option("--skip-missing-coverage",
+        parser.add_option("--nosebleed-skip-missing",
                           dest="skip_missing_coverage", action="store_true",
                           default=None)
 
-        parser.add_option("--no-skip-missing-coverage",
+        parser.add_option("--no-nosebleed-skip-missing",
                           dest="skip_missing_coverage", action="store_false",
                           default=None)
 
-        parser.add_option("--no-coverage-discovery",
+        parser.add_option("--nosebleed-discover",
+                          dest="discover", action="store_true",
+                          default=True)
+
+        parser.add_option("--no-nosebleed-discover",
                           dest="discover", action="store_false",
                           default=True)
 
-        parser.add_option("--coverage-dsn",
+        parser.add_option("--nosebleed-dsn",
                           dest="coverage_dsn",
                           default='sqlite:///coverage.db')
 
-        parser.add_option('--with-coverage-file', action='store_true',
+        parser.add_option('--with-nosebleed-file', action='store_true',
+                          dest="with_coverage_file",
                           default=False)
 
-        parser.add_option('--coverage-file', action='store',
+        parser.add_option('--nosebleed-file', action='store',
                           dest='coverage_file', metavar="FILE",
                           default=env.get('NOSE_BLEED_FILE', 'nosebleed.json'),
                           help=("Path to json file to store the report in. "
@@ -192,7 +198,7 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
         self.dsn = options.coverage_dsn
         self.parent = options.coverage_parent
-        self.enabled = (self.record or self.report_coverage or self.discover)
+        # self.enabled = (self.record or self.report_coverage or self.discover)
 
         if not self.enabled:
             return
