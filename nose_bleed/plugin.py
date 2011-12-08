@@ -287,6 +287,10 @@ class TestCoveragePlugin(Plugin):
 
             missing[filename] = linenos.difference(covered_linenos)
 
+
+        if not total:
+            return
+
         stream.writeln('Coverage Report')
         stream.writeln('-'*70)
         stream.writeln('Coverage against diff is %.2f%% (%d / %d lines)' % (covered / float(total) * 100, covered, total))
