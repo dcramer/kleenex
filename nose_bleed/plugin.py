@@ -218,7 +218,12 @@ class TestCoveragePlugin(Plugin):
         if self.record:
             self.db.upgrade()
 
-        if not (self.discover or self.report):
+        if not self.report_coverage and self.record:
+            # If we're recording coverage we need to ensure it gets reset
+            self.coverage = coverage()
+            self.coverage.start()
+
+        if not (self.discover or self.report_coverage):
             return
 
         s = time.time()
@@ -293,6 +298,36 @@ class TestCoveragePlugin(Plugin):
 
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
+    def finalize(self):
+        if not self.report_coverage or self.record:
+            return
+
+        cov = self.coverage
+
+        # initialize reporter
+        rep = Reporter(cov)
+
+        # process all files
+        rep.find_code_units(None, cov.config)
+
+        for cu in rep.code_units:
+            # if sys.modules[test_.__module__].__file__ == cu.filename:
+            #     continue
+            filename = cu.name + '.py'
+            try:
+                # TODO: this CANT work in all cases, must be a better way
+                analysis = rep.coverage._analyze(cu)
+                linenos = analysis.statements
+                if self.report_coverage:
+                    diff = self.diff_data[filename]
+                    cov_linenos = [l for l in linenos if l in diff]
+                    if cov_linenos:
+                        self.cov_data[filename].update(cov_linenos)
+            except KeyboardInterrupt:                       # pragma: no cover
+                raise
+            except:
+                traceback.print_exc()
+
     def report(self, stream):
         if not self.report_coverage:
             return
@@ -354,14 +389,15 @@ class TestCoveragePlugin(Plugin):
         return False
 
     def startTest(self, test):
-        if not (self.report_coverage or self.record):
+        if not self.record:
             return
 
-        self.coverage = coverage(include='disqus/*')
+        # If we're recording coverage we need to ensure it gets reset
+        self.coverage = coverage()
         self.coverage.start()
 
     def stopTest(self, test):
-        if not (self.report_coverage or self.record):
+        if not self.record:
             return
 
         cov = self.coverage
