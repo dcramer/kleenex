@@ -36,8 +36,12 @@ Coverage = Table('coverage', metadata,
     Column('id', Integer, primary_key=True),
     Column('filename', String),
     Column('lineno', Integer),
-    Column('test', String, index=True),
+    Column('test', Integer, index=True),
     UniqueConstraint('filename', 'lineno', 'test'),
+)
+Tests = Table('tests', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('test', String, unique=True),
 )
 
 class TestCoverageDB(object):
@@ -62,7 +66,7 @@ class TestCoverageDB(object):
         return self.conn.begin()
 
     def has_seen_test(self, test):
-        statement = select([Coverage.c.id]).where(Coverage.c.test == test).limit(1)
+        statement = select([Tests.c.id]).where(Tests.c.test == test).limit(1)
         result = bool(self.conn.execute(statement).fetchall())
         return result
 
@@ -90,7 +94,11 @@ class TestCoverageDB(object):
                 continue
             self._coverage[filename][lineno].discard(test)
 
+        self.conn.execute(Tests.delete().where(Tests.c.test == test))
         self.conn.execute(Coverage.delete().where(Coverage.c.test == test))
+
+    def set_test_has_coverage(self, test):
+        self.conn.execute(Tests.insert().values(test=test))
 
     def set_test_coverage(self, test, filename, linenos):
         if filename not in self._coverage:
@@ -423,6 +431,7 @@ class TestCoveragePlugin(Plugin):
 
         if self.record:
             self.db.clear_test_coverage(test_name)
+            self.db.set_test_has_coverage(test_name)
 
         for cu in rep.code_units:
             # if sys.modules[test_.__module__].__file__ == cu.filename:
