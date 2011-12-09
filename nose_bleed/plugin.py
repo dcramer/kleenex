@@ -218,11 +218,6 @@ class TestCoveragePlugin(Plugin):
         if self.record:
             self.db.upgrade()
 
-        if self.report_coverage and not self.record:
-            # If we're recording coverage we need to ensure it gets reset
-            self.coverage = coverage()
-            self.coverage.start()
-
         if not (self.discover or self.report_coverage):
             return
 
@@ -298,12 +293,21 @@ class TestCoveragePlugin(Plugin):
 
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
+        if self.report_coverage and not self.record:
+            # If we're recording coverage we need to ensure it gets reset
+            self.coverage = coverage()
+            self.coverage.start()
+
     def report(self, stream):
         if not self.report_coverage:
             return
 
+        cov_data = self.cov_data
+        diff_data = self.diff_data
+
         if not self.record:
             cov = self.coverage
+            cov.stop()
 
             # initialize reporter
             rep = Reporter(cov)
@@ -320,10 +324,10 @@ class TestCoveragePlugin(Plugin):
                     analysis = rep.coverage._analyze(cu)
                     linenos = analysis.statements
                     if self.report_coverage:
-                        diff = self.diff_data[filename]
+                        diff = diff_data[filename]
                         cov_linenos = [l for l in linenos if l in diff]
                         if cov_linenos:
-                            self.cov_data[filename].update(cov_linenos)
+                            cov_data[filename].update(cov_linenos)
                 except KeyboardInterrupt:                       # pragma: no cover
                     raise
                 except:
@@ -332,8 +336,8 @@ class TestCoveragePlugin(Plugin):
         covered = 0
         total = 0
         missing = defaultdict(set)
-        for filename, linenos in self.diff_data.iteritems():
-            covered_linenos = self.cov_data[filename]
+        for filename, linenos in diff_data.iteritems():
+            covered_linenos = cov_data[filename]
 
             total += len(linenos)
             covered += len(covered_linenos)
