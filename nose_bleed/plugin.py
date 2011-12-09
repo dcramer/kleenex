@@ -298,7 +298,7 @@ class TestCoveragePlugin(Plugin):
 
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
-    def finalize(self):
+    def finalize(self, result):
         if not self.report_coverage or self.record:
             return
 
