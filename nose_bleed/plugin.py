@@ -218,7 +218,7 @@ class TestCoveragePlugin(Plugin):
         if self.record:
             self.db.upgrade()
 
-        if not self.report_coverage and self.record:
+        if self.report_coverage and not self.record:
             # If we're recording coverage we need to ensure it gets reset
             self.coverage = coverage()
             self.coverage.start()
