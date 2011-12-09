@@ -62,22 +62,20 @@ class TestCoverageDB(object):
         return self.conn.begin()
 
     def has_seen_test(self, test):
-        statement = select([Coverage.c.id], Coverage.c.test == test, limit=1)
+        statement = select([Coverage.c.id]).where(Coverage.c.test == test).limit(1)
         result = bool(self.conn.execute(statement).fetchall())
         return result
 
     def has_test_coverage(self, filename):
         if filename not in self._coverage:
-            self._coverage[filename] = file_cover = {}
-            statement = select([Coverage.c.lineno, Coverage.c.test], Coverage.c.filename == filename)
-            for lineno, test in self.conn.execute(statement).fetchall():
-                file_cover.setdefault(lineno, set()).add(test)
+            statement = select([Coverage.c.id]).where(Coverage.c.filename == filename).limit(1)
+            return bool(self.conn.execute(statement).fetchall())
         return bool(self._coverage[filename])
 
     def get_test_coverage(self, filename, linenos):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
-            statement = select([Coverage.c.lineno, Coverage.c.test], Coverage.c.filename == filename, Coverage.c.lineno.in_(linenos))
+            statement = select([Coverage.c.lineno, Coverage.c.test]).where(Coverage.c.filename == filename).where(Coverage.c.lineno.in_(linenos))
             for lineno, test in self.conn.execute(statement).fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
         return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
