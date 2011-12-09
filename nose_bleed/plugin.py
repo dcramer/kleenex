@@ -279,16 +279,17 @@ class TestCoveragePlugin(Plugin):
             self.logger.info("Finding coverage for %d file(s)", len(files))
 
             for filename, linenos in diff.iteritems():
-                # TODO: for this to be useful we need to eliminate tests
-                if not self.db.has_test_coverage(filename):
-                    if self.skip_missing:
-                        self.logger.warning('%s has no test coverage recorded', filename)
-                        continue
-                    raise AssertionError("Missing test coverage for %s" % filename)
-
-                # record
-                for test in self.db.get_test_coverage(filename, linenos):
-                    pending_funcs.add(test)
+                test_coverage = self.db.get_test_coverage(filename, linenos)
+                if not test_coverage:
+                    # check if we have any coverage recorded
+                    if not self.db.has_test_coverage(filename):
+                        if self.skip_missing:
+                            self.logger.warning('%s has no test coverage recorded', filename)
+                            continue
+                        raise AssertionError("Missing test coverage for %s" % filename)
+                else:
+                    for test in test_coverage:
+                        pending_funcs.add(test)
 
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
