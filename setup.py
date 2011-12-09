@@ -7,7 +7,7 @@ tests_require = [
 
 setup(
     name='nose-bleed',
-    version='0.3.1',
+    version='0.4.0',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     description='A progressive coverage plugin for Nose.',
