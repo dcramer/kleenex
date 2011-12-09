@@ -278,7 +278,7 @@ class TestCoveragePlugin(Plugin):
             if not self.discover:
                 continue
 
-        self.logger.info("Parsed diff in %.2fs", time.time() - s)
+        self.logger.info("Parsed diff in %.2fs as %d file(s)", time.time() - s, len(diff))
 
         if self.discover:
             self.logger.info("Finding coverage for %d file(s)", len(files))
@@ -298,39 +298,36 @@ class TestCoveragePlugin(Plugin):
 
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
-    def finalize(self, result):
-        if not self.report_coverage or self.record:
-            return
-
-        cov = self.coverage
-
-        # initialize reporter
-        rep = Reporter(cov)
-
-        # process all files
-        rep.find_code_units(None, cov.config)
-
-        for cu in rep.code_units:
-            # if sys.modules[test_.__module__].__file__ == cu.filename:
-            #     continue
-            filename = cu.name + '.py'
-            try:
-                # TODO: this CANT work in all cases, must be a better way
-                analysis = rep.coverage._analyze(cu)
-                linenos = analysis.statements
-                if self.report_coverage:
-                    diff = self.diff_data[filename]
-                    cov_linenos = [l for l in linenos if l in diff]
-                    if cov_linenos:
-                        self.cov_data[filename].update(cov_linenos)
-            except KeyboardInterrupt:                       # pragma: no cover
-                raise
-            except:
-                traceback.print_exc()
-
     def report(self, stream):
         if not self.report_coverage:
             return
+
+        if not self.record:
+            cov = self.coverage
+
+            # initialize reporter
+            rep = Reporter(cov)
+
+            # process all files
+            rep.find_code_units(None, cov.config)
+
+            for cu in rep.code_units:
+                # if sys.modules[test_.__module__].__file__ == cu.filename:
+                #     continue
+                filename = cu.name + '.py'
+                try:
+                    # TODO: this CANT work in all cases, must be a better way
+                    analysis = rep.coverage._analyze(cu)
+                    linenos = analysis.statements
+                    if self.report_coverage:
+                        diff = self.diff_data[filename]
+                        cov_linenos = [l for l in linenos if l in diff]
+                        if cov_linenos:
+                            self.cov_data[filename].update(cov_linenos)
+                except KeyboardInterrupt:                       # pragma: no cover
+                    raise
+                except:
+                    traceback.print_exc()
 
         covered = 0
         total = 0
