@@ -1,3 +1,11 @@
+"""
+kleenex.db
+~~~~~~~~~~
+
+:copyright: 2011 David Cramer.
+:license: BSD
+"""
+
 import time
 
 from operator import or_

@@ -1,3 +1,11 @@
+"""
+kleenex.plugin
+~~~~~~~~~~~~~~
+
+:copyright: 2011 David Cramer.
+:license: BSD
+"""
+
 from __future__ import absolute_import
 
 import logging
@@ -11,10 +19,10 @@ from coverage import coverage
 from coverage.report import Reporter
 from collections import defaultdict
 from nose.plugins.base import Plugin
-from nose_bleed.diff import DiffParser
 from subprocess import Popen, PIPE, STDOUT
 
-from .db import TestCoverageDB
+from kleenex.db import TestCoverageDB
+from kleenex.diff import DiffParser
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."

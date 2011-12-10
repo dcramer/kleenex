@@ -7,7 +7,7 @@ tests_require = [
 
 setup(
     name='nose-kleenex',
-    version='0.5.1',
+    version='0.6.0',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     description='A discovery plugin for Nose which relies on code coverage.',
@@ -21,7 +21,7 @@ setup(
     ],
     entry_points={
        'nose.plugins.0.10': [
-            'nose_bleed = kleenex.plugin:TestCoveragePlugin'
+            'kleenex = kleenex.plugin:TestCoveragePlugin'
         ]
     },
     license='Apache License 2.0',

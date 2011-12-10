@@ -1,6 +1,6 @@
 """
-nose_bleed.diff
-~~~~~~~~~~~~~~~
+kleenex.diff
+~~~~~~~~~~~~
 
 This is an adaptation from lodgeit's lib/diff.py
 
