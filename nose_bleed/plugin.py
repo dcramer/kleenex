@@ -154,6 +154,8 @@ class TestCoveragePlugin(Plugin):
         if self.record:
             self.db.upgrade()
 
+        self.revision = _get_git_revision('.git')
+
         if not (self.discover or self.report_coverage):
             return
 
@@ -163,8 +165,6 @@ class TestCoveragePlugin(Plugin):
         # git diff `git merge-base HEAD master`
         proc = Popen(['git', 'diff', self.parent], stdout=PIPE, stderr=STDOUT)
         diff = proc.stdout.read()
-
-        self.revision = _get_git_revision('.git')
 
         s = time.time()
         self.logger.info("Parsing diff from parent %s", self.parent)
