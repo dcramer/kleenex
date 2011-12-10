@@ -12,11 +12,9 @@ from coverage.report import Reporter
 from collections import defaultdict
 from nose.plugins.base import Plugin
 from nose_bleed.diff import DiffParser
-from operator import or_
 from subprocess import Popen, PIPE, STDOUT
-from sqlalchemy import create_engine, Table, MetaData, Integer, String, \
-  Column, UniqueConstraint
-from sqlalchemy.sql import select
+
+from .db import TestCoverageDB
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
@@ -31,85 +29,15 @@ def is_py_script(filename):
         except StopIteration:
             return False
 
-metadata = MetaData()
-Coverage = Table('coverage', metadata,
-    Column('id', Integer, primary_key=True),
-    Column('filename', String),
-    Column('lineno', Integer),
-    Column('test', Integer, index=True),
-    UniqueConstraint('filename', 'lineno', 'test'),
-)
-Tests = Table('tests', metadata,
-    Column('id', Integer, primary_key=True),
-    Column('test', String, unique=True),
-)
-
-class TestCoverageDB(object):
-    def __init__(self, dsn, logger):
-        self.logger = logger
-        self.engine = create_engine(dsn)
-        self.conn = self._connect_db()
-
-        self._coverage = {}
-
-    def _connect_db(self):
-        self.logger.info('Connecting to coverage database..')
-        s = time.time()
-        conn = self.engine.connect()
-        self.logger.info('Connection established to coverage database in %.2fs', time.time() - s)
-        return conn
-
-    def upgrade(self):
-        metadata.create_all(self.conn)
-
-    def begin(self):
-        return self.conn.begin()
-
-    def has_seen_test(self, test):
-        statement = select([Tests.c.id]).where(Tests.c.test == test).limit(1)
-        result = bool(self.conn.execute(statement).fetchall())
-        return result
-
-    def has_test_coverage(self, filename):
-        if filename not in self._coverage:
-            statement = select([Coverage.c.id]).where(Coverage.c.filename == filename).limit(1)
-            return bool(self.conn.execute(statement).fetchall())
-        return bool(self._coverage[filename])
-
-    def get_test_coverage(self, filename, linenos):
-        if filename not in self._coverage:
-            self._coverage[filename] = file_cover = {}
-            statement = select([Coverage.c.lineno, Coverage.c.test]).where(Coverage.c.filename == filename).where(Coverage.c.lineno.in_(linenos))
-            for lineno, test in self.conn.execute(statement).fetchall():
-                file_cover.setdefault(lineno, set()).add(test)
-        return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
-
-    def clear_test_coverage(self, test):
-        # clean up existing tests
-        statement = select([Coverage.c.lineno, Coverage.c.test], Coverage.c.test==test)
-        for filename, lineno in self.conn.execute(statement).fetchall():
-            if filename not in self._coverage:
-                continue
-            if lineno not in self._coverage[filename]:
-                continue
-            self._coverage[filename][lineno].discard(test)
-
-        self.conn.execute(Tests.delete().where(Tests.c.test == test))
-        self.conn.execute(Coverage.delete().where(Coverage.c.test == test))
-
-    def set_test_has_coverage(self, test):
-        self.conn.execute(Tests.insert().values(test=test))
-
-    def set_test_coverage(self, test, filename, linenos):
-        if filename not in self._coverage:
-            self._coverage[filename] = file_cover = {}
-        else:
-            file_cover = self._coverage[filename]
-
-        # add new data
-        for lineno in linenos:
-            file_cover.setdefault(lineno, set()).add(test)
-            self.conn.execute(Coverage.insert().values(filename=filename, lineno=lineno, test=test))
+def _get_git_revision(path):
+    revision_file = os.path.join(path, 'refs', 'heads', 'master')
+    if not os.path.exists(revision_file):
+        return None
+    fh = open(revision_file, 'r')
+    try:
+        return fh.read()
+    finally:
+        fh.close()
 
 class TestCoveragePlugin(Plugin):
     """
@@ -228,6 +156,15 @@ class TestCoveragePlugin(Plugin):
 
         if not (self.discover or self.report_coverage):
             return
+
+        s = time.time()
+        self.logger.info("Getting current revision")
+        # pull in our diff
+        # git diff `git merge-base HEAD master`
+        proc = Popen(['git', 'diff', self.parent], stdout=PIPE, stderr=STDOUT)
+        diff = proc.stdout.read()
+
+        self.revision = _get_git_revision('.git')
 
         s = time.time()
         self.logger.info("Parsing diff from parent %s", self.parent)
@@ -431,7 +368,7 @@ class TestCoveragePlugin(Plugin):
 
         if self.record:
             self.db.clear_test_coverage(test_name)
-            self.db.set_test_has_coverage(test_name)
+            self.db.set_test_has_coverage(test_name, self.revision)
 
         for cu in rep.code_units:
             # if sys.modules[test_.__module__].__file__ == cu.filename:
