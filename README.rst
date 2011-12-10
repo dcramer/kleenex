@@ -1,20 +1,20 @@
-nose-bleed
-==========
+kleenex
+=======
 
 **Under Development!**
 
-nose-bleed attempts to stop the pain associated with a large test suite by
+kleenex attempts to stop the pain associated with a large test suite by
 only running the tests applicable to the changes in your [git] branch.
 
 Usage
 -----
 
-By default, nose-bleed is fully active on all test runs. What this means, is it will attempt to connect to a
+By default, kleenex is fully active on all test runs. What this means, is it will attempt to connect to a
 coverage database (sqlite://coverage.db by default) and determine which tests it needs to run based on the
 code changes. If data for a test is missing in the database (e.g. the test is new), it will include that test
 in the suite automatically.
 
-nose-bleed also checks for missing coverage along the way. By default it will raise an error when it hits a code
+Kleenex also checks for missing coverage along the way. By default it will raise an error when it hits a code
 change that has no test coverage. To disable this functionality, you should set ``--skip-missing-coverage``.
 
 Recording Test Coverage

@@ -6,12 +6,12 @@ tests_require = [
 ]
 
 setup(
-    name='nose-bleed',
+    name='nose-kleenex',
     version='0.5.1',
     author='David Cramer',
     author_email='dcramer@gmail.com',
-    description='A progressive coverage plugin for Nose.',
-    url='http://github.com/dcramer/nose-bleed',
+    description='A discovery plugin for Nose which relies on code coverage.',
+    url='http://github.com/dcramer/nose-kleenex',
     packages=find_packages(exclude=["tests"]),
     zip_safe=False,
     install_requires=[
@@ -21,7 +21,7 @@ setup(
     ],
     entry_points={
        'nose.plugins.0.10': [
-            'nose_bleed = nose_bleed.plugin:TestCoveragePlugin'
+            'nose_bleed = kleenex.plugin:TestCoveragePlugin'
         ]
     },
     license='Apache License 2.0',

@@ -54,7 +54,7 @@ class TestCoveragePlugin(Plugin):
 
     """
     score = 0
-    name = 'nosebleed'
+    name = 'kleenex'
 
     def _get_name_from_test(self, test):
         test_method_name = test._testMethodName
@@ -72,55 +72,55 @@ class TestCoveragePlugin(Plugin):
 
     def options(self, parser, env):
         Plugin.options(self, parser, env)
-        parser.add_option('--nosebleed-parent',
+        parser.add_option('--kleenex-parent',
                           dest="coverage_parent",
                           default="origin/master")
 
-        parser.add_option("--nosebleed-record",
+        parser.add_option("--kleenex-record",
                           dest="record_test_coverage", action="store_true",
                           default=False)
 
-        parser.add_option("--no-nosebleed-record",
+        parser.add_option("--no-kleenex-record",
                           dest="record_test_coverage", action="store_false",
                           default=False)
 
-        parser.add_option("--nosebleed-report",
+        parser.add_option("--kleenex-report",
                           dest="report_test_coverage", action="store_true",
                           default=False)
 
-        parser.add_option("--no-nosebleed-report",
+        parser.add_option("--no-kleenex-report",
                           dest="report_test_coverage", action="store_false",
                           default=False)
 
-        parser.add_option("--nosebleed-skip-missing",
+        parser.add_option("--kleenex-skip-missing",
                           dest="skip_missing_coverage", action="store_true",
                           default=None)
 
-        parser.add_option("--no-nosebleed-skip-missing",
+        parser.add_option("--no-kleenex-skip-missing",
                           dest="skip_missing_coverage", action="store_false",
                           default=None)
 
-        parser.add_option("--nosebleed-discover",
+        parser.add_option("--kleenex-discover",
                           dest="discover", action="store_true",
                           default=True)
 
-        parser.add_option("--no-nosebleed-discover",
+        parser.add_option("--no-kleenex-discover",
                           dest="discover", action="store_false",
                           default=True)
 
-        parser.add_option("--nosebleed-dsn",
+        parser.add_option("--kleenex-dsn",
                           dest="coverage_dsn",
                           default='sqlite:///coverage.db')
 
-        parser.add_option('--with-nosebleed-file', action='store_true',
+        parser.add_option('--with-kleenex-file', action='store_true',
                           dest="with_coverage_file",
                           default=False)
 
-        parser.add_option('--nosebleed-file', action='store',
+        parser.add_option('--kleenex-file', action='store',
                           dest='coverage_file', metavar="FILE",
-                          default=env.get('NOSE_BLEED_FILE', 'nosebleed.json'),
+                          default=env.get('NOSE_BLEED_FILE', 'kleenex.json'),
                           help=("Path to json file to store the report in. "
-                                "Default is nosebleed.json in the working directory "
+                                "Default is kleenex.json in the working directory "
                                 "[NOSE_BLEED_FILE]"))
 
     def configure(self, options, config):
