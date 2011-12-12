@@ -8,12 +8,12 @@ kleenex.plugin
 
 from __future__ import absolute_import
 
+import ConfigParser
 import logging
 import os
 import simplejson
 import sys
 import time
-import traceback
 
 from coverage import coverage
 from coverage.report import Reporter
@@ -24,6 +24,32 @@ from subprocess import Popen, PIPE, STDOUT
 from kleenex.db import TestCoverageDB
 from kleenex.diff import DiffParser
 from kleenex.tracer import ExtendedTracer
+
+def read_config(filename):
+    """
+    This looks for [kleenex] in ``filename`` such as the following:
+
+    [kleenex]
+    db = sqlite:///coverage.db
+    parent = origin/master
+    report = true
+    report-output = sys://stdout
+    record = true
+    skip-missing = true
+    """
+    config = ConfigParser.RawConfigParser(allow_no_value=False)
+    config.read(filename)
+
+    ns = 'kleenex'
+
+    return {
+        'db': config.get(ns, 'db') or 'sqlite:///coverage.db',
+        'parent': config.get(ns, 'parent') or 'origin/master',
+        'report': config.getboolean(ns, 'report') or False,
+        'report-output': config.get(ns, 'report_output') or 'sys://stdout',
+        'record': config.getboolean(ns, 'record') or False,
+        'skip-missing': config.getBoolean(ns, 'skip-missing') or True,
+    }
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
