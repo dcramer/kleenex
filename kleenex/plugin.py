@@ -23,6 +23,7 @@ from subprocess import Popen, PIPE, STDOUT
 
 from kleenex.db import TestCoverageDB
 from kleenex.diff import DiffParser
+from kleenex.tracer import ExtendedTracer
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
@@ -77,6 +78,13 @@ class TestCoveragePlugin(Plugin):
                                                      test_method_name)
 
         return test_name
+
+    def _setup_coverage(self):
+        instance = coverage(include=os.path.join(os.getcwd(), '*'))
+        instance.collector._trace_class = ExtendedTracer
+        instance.use_cache(False)
+
+        return instance
 
     def options(self, parser, env):
         Plugin.options(self, parser, env)
@@ -164,6 +172,10 @@ class TestCoveragePlugin(Plugin):
 
         self.revision = _get_git_revision('.git')
 
+        if self.report_coverage or self.record:
+            # If we're recording coverage we need to ensure it gets reset
+            self.coverage = self._setup_coverage()
+
         if not (self.discover or self.report_coverage):
             return
 
@@ -246,45 +258,12 @@ class TestCoveragePlugin(Plugin):
 
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
-        if self.report_coverage and not self.record:
-            # If we're recording coverage we need to ensure it gets reset
-            self.coverage = coverage()
-            self.coverage.start()
-
     def report(self, stream):
         if not self.report_coverage:
             return
 
         cov_data = self.cov_data
         diff_data = self.diff_data
-
-        if not self.record:
-            cov = self.coverage
-            cov.stop()
-
-            # initialize reporter
-            rep = Reporter(cov)
-
-            # process all files
-            rep.find_code_units(None, cov.config)
-
-            for cu in rep.code_units:
-                # if sys.modules[test_.__module__].__file__ == cu.filename:
-                #     continue
-                filename = cu.name + '.py'
-                try:
-                    # TODO: this CANT work in all cases, must be a better way
-                    analysis = rep.coverage._analyze(cu)
-                    linenos = analysis.statements
-                    if self.report_coverage:
-                        diff = diff_data[filename]
-                        cov_linenos = [l for l in linenos if l in diff]
-                        if cov_linenos:
-                            cov_data[filename].update(cov_linenos)
-                except KeyboardInterrupt:                       # pragma: no cover
-                    raise
-                except:
-                    traceback.print_exc()
 
         covered = 0
         total = 0
@@ -297,7 +276,6 @@ class TestCoveragePlugin(Plugin):
 
             missing[filename] = linenos.difference(covered_linenos)
 
-
         if self.report_file:
             self.report_file.write(simplejson.dumps({
                 'stats': {
@@ -307,7 +285,7 @@ class TestCoveragePlugin(Plugin):
                 'missing': dict((k, tuple(v)) for k, v in missing.iteritems() if v),
             }))
             self.report_file.close()
-        else:
+        elif total:
             stream.writeln('Coverage Report')
             stream.writeln('-'*70)
             stream.writeln('Coverage against diff is %.2f%% (%d / %d lines)' % (covered / float(total) * 100, covered, total))
@@ -343,15 +321,13 @@ class TestCoveragePlugin(Plugin):
         return False
 
     def startTest(self, test):
-        if not self.record:
+        if not (self.record or self.report_coverage):
             return
 
-        # If we're recording coverage we need to ensure it gets reset
-        self.coverage = coverage()
         self.coverage.start()
 
     def stopTest(self, test):
-        if not self.record:
+        if not (self.record or self.report_coverage):
             return
 
         cov = self.coverage
@@ -378,25 +354,37 @@ class TestCoveragePlugin(Plugin):
             self.db.clear_test_coverage(test_name)
             self.db.set_test_has_coverage(test_name, self.revision)
 
+        # Compute the standard deviation for all code executed from this test
+        linenos = []
+        for filename in cov.data.measured_files():
+            linenos.extend(cov.data.executed_lines(filename).values())
+
+        total_prox = sum(linenos)
+        if total_prox:
+            num_vals = len(linenos)
+            mean_prox = total_prox / num_vals
+            stddev_prox = (sum([(l - mean_prox)**2 for l in linenos]) / num_vals)^2
+            min_prox = mean_prox - stddev_prox
+            max_prox = mean_prox + stddev_prox
+
         for cu in rep.code_units:
             # if sys.modules[test_.__module__].__file__ == cu.filename:
             #     continue
             filename = cu.name + '.py'
-            try:
-                # TODO: this CANT work in all cases, must be a better way
-                analysis = rep.coverage._analyze(cu)
-                linenos = analysis.statements
-                if self.record:
-                    self.db.set_test_coverage(test_name, filename, linenos)
-                if self.report_coverage:
-                    diff = self.diff_data[filename]
-                    cov_linenos = [l for l in linenos if l in diff]
-                    if cov_linenos:
-                        self.cov_data[filename].update(cov_linenos)
-            except KeyboardInterrupt:                       # pragma: no cover
-                raise
-            except:
-                traceback.print_exc()
+            linenos = cov.data.executed_lines(cu.filename)
+            if total_prox:
+                linenos_in_prox = [k for k, v in linenos.iteritems() if v <= max_prox and v >= min_prox]
+            else:
+                linenos_in_prox = linenos
+            if self.record:
+                self.db.set_test_coverage(test_name, filename, linenos_in_prox)
+            if self.report_coverage:
+                diff = self.diff_data[filename]
+                cov_linenos = [l for l in linenos if l in diff]
+                if cov_linenos:
+                    self.cov_data[filename].update(cov_linenos)
 
         trans.commit()
+
+        cov.erase()
 
