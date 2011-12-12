@@ -102,6 +102,8 @@ class TestCoverageDB(object):
             file_cover = self._coverage[filename]
 
         test_id = self._get_test_id(test)
+        if not test_id:
+            raise ValueError(test)
 
         # add new data
         ins = Coverage.insert()

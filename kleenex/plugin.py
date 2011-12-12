@@ -376,7 +376,7 @@ class TestCoveragePlugin(Plugin):
                 linenos_in_prox = [k for k, v in linenos.iteritems() if v <= max_prox and v >= min_prox]
             else:
                 linenos_in_prox = linenos
-            if self.record:
+            if self.record and linenos_in_prox:
                 self.db.set_test_coverage(test_name, filename, linenos_in_prox)
             if self.report_coverage:
                 diff = self.diff_data[filename]
