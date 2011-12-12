@@ -46,6 +46,9 @@ class TestCoverageDB(object):
         result = self.conn.execute(select([Tests.c.id]).where(Tests.c.test == test)).fetchone()
         return result[0] if result else None
 
+    def _execute(self, statement, params=[]):
+        return self.conn.execute(statement, params)
+
     def upgrade(self):
         metadata.create_all(self.conn, checkfirst=True)
 
@@ -54,20 +57,20 @@ class TestCoverageDB(object):
 
     def has_seen_test(self, test):
         statement = select([Tests.c.id]).where(Tests.c.test == test).limit(1)
-        result = bool(self.conn.execute(statement).fetchall())
+        result = bool(self._execute(statement).fetchall())
         return result
 
     def has_test_coverage(self, filename):
         if filename not in self._coverage:
             statement = select([Coverage.c.id]).where(Coverage.c.filename == filename).limit(1)
-            return bool(self.conn.execute(statement).fetchall())
+            return bool(self._execute(statement).fetchall())
         return bool(self._coverage[filename])
 
     def get_test_coverage(self, filename, linenos):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
             statement = select([Coverage.c.lineno, Tests.c.test]).where(Coverage.c.filename == filename).where(Coverage.c.lineno.in_(linenos))
-            for lineno, test in self.conn.execute(statement).fetchall():
+            for lineno, test in self._execute(statement).fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
         return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
 
@@ -79,18 +82,18 @@ class TestCoverageDB(object):
             return
 
         statement = select([Coverage.c.lineno, Tests.c.test], Coverage.c.test_id == test_id)
-        for filename, lineno in self.conn.execute(statement).fetchall():
+        for filename, lineno in self._execute(statement).fetchall():
             if filename not in self._coverage:
                 continue
             if lineno not in self._coverage[filename]:
                 continue
             self._coverage[filename][lineno].discard(test)
 
-        self.conn.execute(Tests.delete().where(Tests.c.test == test))
-        self.conn.execute(Coverage.delete().where(Coverage.c.test_id == test_id))
+        self._execute(Tests.delete().where(Tests.c.test == test))
+        self._execute(Coverage.delete().where(Coverage.c.test_id == test_id))
 
     def set_test_has_coverage(self, test, revision):
-        self.conn.execute(Tests.insert().values(test=test, revision=revision))
+        self._execute(Tests.insert().values(test=test, revision=revision))
 
     def set_test_coverage(self, test, filename, linenos):
         if filename not in self._coverage:
@@ -101,6 +104,12 @@ class TestCoverageDB(object):
         test_id = self._get_test_id(test)
 
         # add new data
+        ins = Coverage.insert()
         for lineno in linenos:
             file_cover.setdefault(lineno, set()).add(test)
-            self.conn.execute(Coverage.insert().values(filename=filename, lineno=lineno, test_id=test_id))
+
+        self._execute(ins, [{
+            'filename': filename,
+            'lineno': lineno,
+            'test_id': test_id,
+        } for lineno in linenos])
