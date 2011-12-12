@@ -89,8 +89,8 @@ class TestCoverageDB(object):
                 continue
             self._coverage[filename][lineno].discard(test)
 
-        self._execute(Tests.delete().where(Tests.c.test == test))
         self._execute(Coverage.delete().where(Coverage.c.test_id == test_id))
+        self._execute(Tests.delete().where(Tests.c.test == test))
 
     def set_test_has_coverage(self, test, revision):
         self._execute(Tests.insert().values(test=test, revision=revision))
