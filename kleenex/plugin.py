@@ -2,7 +2,7 @@
 kleenex.plugin
 ~~~~~~~~~~~~~~
 
-:copyright: 2011 David Cramer.
+:copyright: 2011 DISQUS.
 :license: BSD
 """
 

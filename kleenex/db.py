@@ -2,8 +2,7 @@
 kleenex.db
 ~~~~~~~~~~
 
-:copyright: 2011 David Cramer.
-:license: BSD
+:copyright: 2011 DISQUS.:license: BSD
 """
 
 import time

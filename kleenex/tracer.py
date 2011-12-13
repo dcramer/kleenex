@@ -1,3 +1,11 @@
+"""
+kleenex.tracer
+~~~~~~~~~~~~~~
+
+:copyright: 2011 DISQUS.
+:license: BSD
+"""
+
 from coverage.collector import PyTracer
 
 class ExtendedTracer(PyTracer):
