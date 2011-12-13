@@ -145,6 +145,7 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
         self.dsn = options.coverage_dsn
         self.parent = options.coverage_parent
+        self.coverage_max_proximity = 4
         # self.enabled = (self.record or self.report_coverage or self.discover)
 
         if not self.enabled:
@@ -356,23 +357,12 @@ class TestCoveragePlugin(Plugin):
         for filename in cov.data.measured_files():
             linenos.extend(cov.data.executed_lines(filename).values())
 
-        total_prox = sum(linenos)
-        if total_prox:
-            num_vals = len(linenos)
-            mean_prox = total_prox / num_vals
-            stddev_prox = (sum([(l - mean_prox)**2 for l in linenos]) / num_vals)^2
-            min_prox = mean_prox - stddev_prox
-            max_prox = mean_prox + stddev_prox
-
         for cu in rep.code_units:
             # if sys.modules[test_.__module__].__file__ == cu.filename:
             #     continue
             filename = cu.name + '.py'
             linenos = cov.data.executed_lines(cu.filename)
-            if total_prox:
-                linenos_in_prox = [k for k, v in linenos.iteritems() if v <= max_prox and v >= min_prox]
-            else:
-                linenos_in_prox = linenos
+            linenos_in_prox = dict((k, v) for k, v in linenos.iteritems() if v < self.coverage_max_proximity)
             if self.record and linenos_in_prox:
                 self.db.set_test_coverage(test_name, filename, linenos_in_prox)
             if self.report_coverage:
