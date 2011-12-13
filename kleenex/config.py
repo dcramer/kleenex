@@ -1,8 +1,10 @@
 import ConfigParser
 
+
 class Config(dict):
     __getattr__ = dict.__getitem__
     __setattr__ = dict.__setitem__
+
 
 def read_config(filename):
     """
@@ -13,7 +15,7 @@ def read_config(filename):
     parent = origin/master
     discover = true
     report = true
-    report_output = sys://stdout
+    report_output =
     record = true
     skip_missing = true
     max_distance = 4
@@ -24,7 +26,7 @@ def read_config(filename):
         'parent': 'origin/master',
         'discover': 'false',
         'report': 'true',
-        'report_output': 'sys://stdout',
+        'report_output': '',
         'record': 'false',
         'skip_missing': 'true',
         'max_distance': '4',
