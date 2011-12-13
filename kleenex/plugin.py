@@ -32,6 +32,7 @@ def read_config(filename):
     [kleenex]
     db = sqlite:///coverage.db
     parent = origin/master
+    discover = true
     report = true
     report-output = sys://stdout
     record = true
@@ -45,6 +46,7 @@ def read_config(filename):
     return {
         'db': config.get(ns, 'db') or 'sqlite:///coverage.db',
         'parent': config.get(ns, 'parent') or 'origin/master',
+        'discover': config.getboolean(ns, 'discover') or False,
         'report': config.getboolean(ns, 'report') or False,
         'report-output': config.get(ns, 'report_output') or 'sys://stdout',
         'record': config.getboolean(ns, 'record') or False,
@@ -112,69 +114,19 @@ class TestCoveragePlugin(Plugin):
 
         return instance
 
-    def options(self, parser, env):
-        Plugin.options(self, parser, env)
-        parser.add_option('--kleenex-parent',
-                          dest="coverage_parent",
-                          default="origin/master")
-
-        parser.add_option("--kleenex-record",
-                          dest="record_test_coverage", action="store_true",
-                          default=False)
-
-        parser.add_option("--no-kleenex-record",
-                          dest="record_test_coverage", action="store_false",
-                          default=False)
-
-        parser.add_option("--kleenex-report",
-                          dest="report_test_coverage", action="store_true",
-                          default=False)
-
-        parser.add_option("--no-kleenex-report",
-                          dest="report_test_coverage", action="store_false",
-                          default=False)
-
-        parser.add_option("--kleenex-skip-missing",
-                          dest="skip_missing_coverage", action="store_true",
-                          default=None)
-
-        parser.add_option("--no-kleenex-skip-missing",
-                          dest="skip_missing_coverage", action="store_false",
-                          default=None)
-
-        parser.add_option("--kleenex-discover",
-                          dest="discover", action="store_true",
-                          default=True)
-
-        parser.add_option("--no-kleenex-discover",
-                          dest="discover", action="store_false",
-                          default=True)
-
-        parser.add_option("--kleenex-dsn",
-                          dest="coverage_dsn",
-                          default='sqlite:///coverage.db')
-
-        parser.add_option('--with-kleenex-file', action='store_true',
-                          dest="with_coverage_file",
-                          default=False)
-
-        parser.add_option('--kleenex-file', action='store',
-                          dest='coverage_file', metavar="FILE",
-                          default=env.get('NOSE_BLEED_FILE', 'kleenex.json'),
-                          help=("Path to json file to store the report in. "
-                                "Default is kleenex.json in the working directory "
-                                "[NOSE_BLEED_FILE]"))
-
     def configure(self, options, config):
         Plugin.configure(self, options, config)
-        self.skip_missing = options.skip_missing_coverage
-        self.record = options.record_test_coverage
-        self.report_coverage = options.report_test_coverage
-        self.discover = options.discover
-        self.logger = logging.getLogger(__name__)
-        self.dsn = options.coverage_dsn
-        self.parent = options.coverage_parent
+        config = read_config('setup.cfg')
+
+        self.skip_missing = config['skip-missing']
+        self.record = config['record']
+        self.report_coverage = config['report']
+        self.discover = config['discover']
+        self.dsn = config['db']
+        self.parent = config['parent']
         # self.enabled = (self.record or self.report_coverage or self.discover)
+
+        self.logger = logging.getLogger(__name__)
 
         if not self.enabled:
             return
@@ -185,10 +137,13 @@ class TestCoveragePlugin(Plugin):
         # cov is a mapping of filename->[linenos]
         self.cov_data = defaultdict(set)
 
-        if options.with_coverage_file:
-            self.report_file = open(options.coverage_file, 'w')
-        else:
+        report_output = config['report-output']
+        if not report_output:
             self.report_file = None
+        elif report_output.startswith('sys://'):
+            self.report_file = getattr(sys, report_output[6:])
+        else:
+            self.report_file = open(report_output, 'w')
 
     def begin(self):
         # XXX: this is pretty hacky
