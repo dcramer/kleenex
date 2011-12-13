@@ -1,4 +1,4 @@
-import ConfigParser
+from ConfigParser import RawConfigParser
 
 
 class Config(dict):
@@ -15,23 +15,23 @@ def read_config(filename, section='kleenex'):
     parent = origin/master
     discover = true
     report = true
-    report_output =
+    report_output = -
     record = true
     skip_missing = true
     max_distance = 4
     test_missing = true
     """
-    config = ConfigParser.RawConfigParser({
+    config = RawConfigParser({
         'db': 'sqlite:///coverage.db',
         'parent': 'origin/master',
         'discover': 'false',
         'report': 'true',
-        'report_output': '',
+        'report_output': '-',
         'record': 'false',
         'skip_missing': 'true',
         'max_distance': '4',
         'test_missing': 'true',
-    }, dict_type=Config, allow_no_value=False)
+    }, dict_type=Config)
     config.read(filename)
 
     if not config.has_section(section):

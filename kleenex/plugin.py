@@ -110,7 +110,7 @@ class TestCoveragePlugin(Plugin):
         self.cov_data = defaultdict(set)
 
         report_output = config.report_output
-        if not report_output:
+        if not report_output or report_output == '-':
             self.report_file = None
         elif report_output.startswith('sys://'):
             pipe = report_output[6:]
