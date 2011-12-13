@@ -13,7 +13,6 @@ import os
 import simplejson
 import sys
 import time
-import traceback
 
 from coverage import coverage
 from coverage.report import Reporter
@@ -33,7 +32,8 @@ def is_py_script(filename):
         return False
     else:
         try:
-            first_line = open(filename, "r").next().strip()
+            with open(filename, "r") as fp:
+                first_line = fp.readline().strip()
             return "#!" in first_line and "python" in first_line
         except StopIteration:
             return False
@@ -42,11 +42,8 @@ def _get_git_revision(path):
     revision_file = os.path.join(path, 'refs', 'heads', 'master')
     if not os.path.exists(revision_file):
         return None
-    fh = open(revision_file, 'r')
-    try:
-        return fh.read()
-    finally:
-        fh.close()
+    with open(revision_file, 'r') as fp:
+        return fp.read()
 
 class TestCoveragePlugin(Plugin):
     """
