@@ -22,13 +22,13 @@ def read_config(filename):
     config = ConfigParser.RawConfigParser({
         'db': 'sqlite:///coverage.db',
         'parent': 'origin/master',
-        'discover': False,
-        'report': False,
+        'discover': 'false',
+        'report': 'false',
         'report_output': 'sys://stdout',
-        'record': False,
-        'skip_missing': True,
-        'max_distance': 4,
-        'test_missing': True,
+        'record': 'false',
+        'skip_missing': 'true',
+        'max_distance': '4',
+        'test_missing': 'true',
     }, dict_type=Config, allow_no_value=False)
     config.read(filename)
 
@@ -44,7 +44,7 @@ def read_config(filename):
         'report': config.getboolean(ns, 'report'),
         'report_output': config.get(ns, 'report_output'),
         'record': config.getboolean(ns, 'record'),
-        'skip_missing': config.getBoolean(ns, 'skip_missing'),
-        'max_distance': config.getInt(ns, 'max_distance'),
-        'test_missing': config.getBoolean(ns, 'test_missing'),
+        'skip_missing': config.getboolean(ns, 'skip_missing'),
+        'max_distance': config.getint(ns, 'max_distance'),
+        'test_missing': config.getboolean(ns, 'test_missing'),
     })

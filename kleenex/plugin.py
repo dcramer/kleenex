@@ -84,9 +84,13 @@ class TestCoveragePlugin(Plugin):
 
         return instance
 
+    def options(self, parser, env):
+        Plugin.options(self, parser, env)
+        parser.add_option("--kleenex-config", dest="kleenex_config", default="setup.cfg")
+
     def configure(self, options, config):
         Plugin.configure(self, options, config)
-        config = read_config('setup.cfg')
+        config = read_config(options.kleenex_config)
 
         self.config = config
 
@@ -113,7 +117,7 @@ class TestCoveragePlugin(Plugin):
 
     def begin(self):
         # XXX: this is pretty hacky
-        self.db = CoverageDB(self.dsn, self.logger)
+        self.db = CoverageDB(self.config.db, self.logger)
         if self.config.record:
             self.db.upgrade()
 
@@ -247,7 +251,7 @@ class TestCoveragePlugin(Plugin):
 
 
     def wantMethod(self, method):
-        if not self.discover:
+        if not self.config.discover:
             return
 
         # only works with unittest compatible functions currently
@@ -297,7 +301,7 @@ class TestCoveragePlugin(Plugin):
         # The rest of this is all run within a single transaction
         trans = self.db.begin()
 
-        if self.config.report:
+        if self.config.record:
             self.db.clear_test_coverage(test_name)
             self.db.set_test_has_seen_test(test_name, self.revision)
 
@@ -311,9 +315,10 @@ class TestCoveragePlugin(Plugin):
             #     continue
             filename = cu.name + '.py'
             linenos = cov.data.executed_lines(cu.filename)
-            linenos_in_prox = dict((k, v) for k, v in linenos.iteritems() if v < self.config.max_distance)
-            if self.config.record and linenos_in_prox:
-                self.db.set_test_coverage(test_name, filename, linenos_in_prox)
+            if self.config.record:
+                linenos_in_prox = dict((k, v) for k, v in linenos.iteritems() if v < self.config.max_distance)
+                if linenos_in_prox:
+                    self.db.set_test_coverage(test_name, filename, linenos_in_prox)
             if self.config.report:
                 diff = self.diff_data[filename]
                 cov_linenos = [l for l in linenos if l in diff]
