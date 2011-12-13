@@ -168,7 +168,7 @@ class TestCoveragePlugin(Plugin):
             else:
                 filename = file['old_filename']
                 if not filename.startswith('a/'):
-                    continue # ??
+                    continue  # ??
 
             filename = filename[2:]
 
@@ -238,17 +238,16 @@ class TestCoveragePlugin(Plugin):
             self.report_file.close()
         elif total:
             stream.writeln('Coverage Report')
-            stream.writeln('-'*70)
+            stream.writeln('-' * 70)
             stream.writeln('Coverage against diff is %.2f%% (%d / %d lines)' % (covered / float(total) * 100, covered, total))
             if missing:
                 stream.writeln()
                 stream.writeln('%-35s   %s' % ('Filename', 'Missing Lines'))
-                stream.writeln('-'*70)
+                stream.writeln('-' * 70)
                 for filename, linenos in missing.iteritems():
                     if not linenos:
                         continue
                     stream.writeln('%-35s   %s' % (filename, ', '.join(map(str, sorted(linenos)))))
-
 
     def wantMethod(self, method):
         if not self.config.discover:
@@ -264,7 +263,7 @@ class TestCoveragePlugin(Plugin):
             return True
 
         # test has no coverage recorded, defer to other plugins
-        elif self.config.allow_missing and not self.db.has_seen_test(test_name):
+        elif self.config.test_missing and not self.db.has_seen_test(test_name):
             self.pending_funcs.add(test_name)
             self.logger.info("Allowing test due to missing coverage report: %s", test_name)
             return None

@@ -17,7 +17,7 @@ def read_config(filename):
     record = true
     skip_missing = true
     max_distance = 4
-    allow_missing = true
+    test_missing = true
     """
     config = ConfigParser.RawConfigParser({
         'db': 'sqlite:///coverage.db',
