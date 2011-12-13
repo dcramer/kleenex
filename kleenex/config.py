@@ -23,7 +23,7 @@ def read_config(filename):
         'db': 'sqlite:///coverage.db',
         'parent': 'origin/master',
         'discover': 'false',
-        'report': 'false',
+        'report': 'true',
         'report_output': 'sys://stdout',
         'record': 'false',
         'skip_missing': 'true',
