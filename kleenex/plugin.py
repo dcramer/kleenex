@@ -146,6 +146,7 @@ class TestCoveragePlugin(Plugin):
         self.dsn = options.coverage_dsn
         self.parent = options.coverage_parent
         self.coverage_max_proximity = 4
+        self.allow_missing = self.record
         # self.enabled = (self.record or self.report_coverage or self.discover)
 
         if not self.enabled:
@@ -311,7 +312,7 @@ class TestCoveragePlugin(Plugin):
             return True
 
         # test has no coverage recorded, defer to other plugins
-        elif not self.db.has_seen_test(test_name):
+        elif self.allow_missing and not self.db.has_seen_test(test_name):
             self.pending_funcs.add(test_name)
             self.logger.info("Allowing test due to missing coverage report: %s", test_name)
             return None
