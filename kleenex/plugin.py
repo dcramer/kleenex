@@ -94,10 +94,10 @@ class TestCoveragePlugin(Plugin):
 
     def configure(self, options, config):
         Plugin.configure(self, options, config)
-        config = read_config(options.kleenex_config, options.kleenex_config_section)
-
         if not self.enabled:
             return
+
+        config = read_config(options.kleenex_config, options.kleenex_config_section)
 
         self.config = config
 
