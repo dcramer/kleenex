@@ -20,7 +20,7 @@ from collections import defaultdict
 from nose.plugins.base import Plugin
 from subprocess import Popen, PIPE, STDOUT
 
-from kleenex.db import TestCoverageDB
+from kleenex.db import CoverageDB
 from kleenex.diff import DiffParser
 from kleenex.tracer import ExtendedTracer
 from kleenex.config import read_config
@@ -113,7 +113,7 @@ class TestCoveragePlugin(Plugin):
 
     def begin(self):
         # XXX: this is pretty hacky
-        self.db = TestCoverageDB(self.dsn, self.logger)
+        self.db = CoverageDB(self.dsn, self.logger)
         if self.config.record:
             self.db.upgrade()
 
@@ -299,7 +299,7 @@ class TestCoveragePlugin(Plugin):
 
         if self.config.report:
             self.db.clear_test_coverage(test_name)
-            self.db.set_test_has_coverage(test_name, self.revision)
+            self.db.set_test_has_seen_test(test_name, self.revision)
 
         # Compute the standard deviation for all code executed from this test
         linenos = []

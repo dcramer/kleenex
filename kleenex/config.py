@@ -19,19 +19,32 @@ def read_config(filename):
     max_distance = 4
     allow_missing = true
     """
-    config = ConfigParser.RawConfigParser(allow_no_value=False)
+    config = ConfigParser.RawConfigParser({
+        'db': 'sqlite:///coverage.db',
+        'parent': 'origin/master',
+        'discover': False,
+        'report': False,
+        'report_output': 'sys://stdout',
+        'record': False,
+        'skip_missing': True,
+        'max_distance': 4,
+        'test_missing': True,
+    }, dict_type=Config, allow_no_value=False)
     config.read(filename)
 
     ns = 'kleenex'
 
+    if not config.has_section(ns):
+        return config.defaults()
+
     return Config({
-        'db': config.get(ns, 'db') or 'sqlite:///coverage.db',
-        'parent': config.get(ns, 'parent') or 'origin/master',
-        'discover': config.getboolean(ns, 'discover') or False,
-        'report': config.getboolean(ns, 'report') or False,
-        'report_output': config.get(ns, 'report_output') or 'sys://stdout',
-        'record': config.getboolean(ns, 'record') or False,
-        'skip_missing': config.getBoolean(ns, 'skip_missing') or True,
-        'max_distance': config.getInt(ns, 'max_distance') or 4,
-        'allow_missing': config.getBoolean(ns, 'allow_missing') or True,
+        'db': config.get(ns, 'db'),
+        'parent': config.get(ns, 'parent'),
+        'discover': config.getboolean(ns, 'discover'),
+        'report': config.getboolean(ns, 'report'),
+        'report_output': config.get(ns, 'report_output'),
+        'record': config.getboolean(ns, 'record'),
+        'skip_missing': config.getBoolean(ns, 'skip_missing'),
+        'max_distance': config.getInt(ns, 'max_distance'),
+        'test_missing': config.getBoolean(ns, 'test_missing'),
     })

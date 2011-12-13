@@ -26,7 +26,7 @@ Coverage = Table('coverage', metadata,
     UniqueConstraint('filename', 'lineno', 'test_id'),
 )
 
-class TestCoverageDB(object):
+class CoverageDB(object):
     def __init__(self, dsn, logger):
         self.logger = logger
         self.engine = create_engine(dsn)
@@ -94,7 +94,7 @@ class TestCoverageDB(object):
         self._execute(Coverage.delete().where(Coverage.c.test_id == test_id))
         self._execute(Tests.delete().where(Tests.c.test == test))
 
-    def set_test_has_coverage(self, test, revision):
+    def set_test_has_seen_test(self, test, revision):
         self._execute(Tests.insert().values(test=test, revision=revision))
 
     def set_test_coverage(self, test, filename, linenos):
