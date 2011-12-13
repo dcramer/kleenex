@@ -6,7 +6,7 @@ class Config(dict):
     __setattr__ = dict.__setitem__
 
 
-def read_config(filename):
+def read_config(filename, section='kleenex'):
     """
     This looks for [kleenex] in ``filename`` such as the following:
 
@@ -34,19 +34,17 @@ def read_config(filename):
     }, dict_type=Config, allow_no_value=False)
     config.read(filename)
 
-    ns = 'kleenex'
-
-    if not config.has_section(ns):
+    if not config.has_section(section):
         return config.defaults()
 
     return Config({
-        'db': config.get(ns, 'db'),
-        'parent': config.get(ns, 'parent'),
-        'discover': config.getboolean(ns, 'discover'),
-        'report': config.getboolean(ns, 'report'),
-        'report_output': config.get(ns, 'report_output'),
-        'record': config.getboolean(ns, 'record'),
-        'skip_missing': config.getboolean(ns, 'skip_missing'),
-        'max_distance': config.getint(ns, 'max_distance'),
-        'test_missing': config.getboolean(ns, 'test_missing'),
+        'db': config.get(section, 'db'),
+        'parent': config.get(section, 'parent'),
+        'discover': config.getboolean(section, 'discover'),
+        'report': config.getboolean(section, 'report'),
+        'report_output': config.get(section, 'report_output'),
+        'record': config.getboolean(section, 'record'),
+        'skip_missing': config.getboolean(section, 'skip_missing'),
+        'max_distance': config.getint(section, 'max_distance'),
+        'test_missing': config.getboolean(section, 'test_missing'),
     })

@@ -25,6 +25,7 @@ from kleenex.diff import DiffParser
 from kleenex.tracer import ExtendedTracer
 from kleenex.config import read_config
 
+
 def is_py_script(filename):
     "Returns True if a file is a python executable."
     if filename.endswith(".py") and os.path.exists(filename):
@@ -39,12 +40,14 @@ def is_py_script(filename):
         except StopIteration:
             return False
 
+
 def _get_git_revision(path):
     revision_file = os.path.join(path, 'refs', 'heads', 'master')
     if not os.path.exists(revision_file):
         return None
     with open(revision_file, 'r') as fp:
         return fp.read()
+
 
 class TestCoveragePlugin(Plugin):
     """
@@ -55,7 +58,7 @@ class TestCoveragePlugin(Plugin):
 
         git diff origin/master
 
-    If you run with the --discover flag, it will attempt to discovery
+    If you run with the discover flag, it will attempt to discovery
     any tests that are required to run to test the changes in your current
     branch, against those of origin/master.
 
@@ -87,10 +90,11 @@ class TestCoveragePlugin(Plugin):
     def options(self, parser, env):
         Plugin.options(self, parser, env)
         parser.add_option("--kleenex-config", dest="kleenex_config", default="setup.cfg")
+        parser.add_option("--kleenex-config-section", dest="kleenex_config_section", default="kleenex")
 
     def configure(self, options, config):
         Plugin.configure(self, options, config)
-        config = read_config(options.kleenex_config)
+        config = read_config(options.kleenex_config, options.kleenex_config_section)
 
         self.config = config
 
