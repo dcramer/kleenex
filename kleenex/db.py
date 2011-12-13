@@ -71,7 +71,10 @@ class TestCoverageDB(object):
             statement = select([Coverage.c.lineno, Tests.c.test]).where(Coverage.c.filename == filename).where(Coverage.c.lineno.in_(linenos))
             for lineno, test in self._execute(statement).fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
-        return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
+        linenos = [self._coverage[filename].get(l, set()) for l in linenos]
+        if not linenos:
+            return set()
+        return reduce(or_, linenos)
 
     def clear_test_coverage(self, test):
         # clean up existing tests
