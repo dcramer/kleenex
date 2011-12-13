@@ -96,12 +96,12 @@ class TestCoveragePlugin(Plugin):
         Plugin.configure(self, options, config)
         config = read_config(options.kleenex_config, options.kleenex_config_section)
 
+        if not self.enabled:
+            return
+
         self.config = config
 
         self.logger = logging.getLogger(__name__)
-
-        if not self.enabled:
-            return
 
         self.pending_funcs = set()
         # diff is a mapping of filename->[linenos]
