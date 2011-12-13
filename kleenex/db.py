@@ -2,8 +2,7 @@
 kleenex.db
 ~~~~~~~~~~
 
-:copyright: 2011 David Cramer.
-:license: BSD
+:copyright: 2011 DISQUS.:license: BSD
 """
 
 import time
@@ -43,11 +42,11 @@ class TestCoverageDB(object):
         return conn
 
     def _get_test_id(self, test):
-        result = self.conn.execute(select([Tests.c.id]).where(Tests.c.test == test)).fetchone()
+        result = self._execute(select([Tests.c.id]).where(Tests.c.test == test)).fetchone()
         return result[0] if result else None
 
-    def _execute(self, statement, params=[]):
-        return self.conn.execute(statement, params)
+    def _execute(self, statement, params=None):
+        return self.conn.execute(statement, params or [])
 
     def upgrade(self):
         metadata.create_all(self.conn, checkfirst=True)
@@ -69,10 +68,13 @@ class TestCoverageDB(object):
     def get_test_coverage(self, filename, linenos):
         if filename not in self._coverage:
             self._coverage[filename] = file_cover = {}
-            statement = select([Coverage.c.lineno, Tests.c.test]).where(Coverage.c.filename == filename).where(Coverage.c.lineno.in_(linenos))
+            statement = select([Coverage.c.lineno, Tests.c.test]).where(Tests.c.id == Coverage.c.test_id).where(Coverage.c.filename == filename).where(Coverage.c.lineno.in_(linenos))
             for lineno, test in self._execute(statement).fetchall():
                 file_cover.setdefault(lineno, set()).add(test)
-        return reduce(or_, (self._coverage[filename].get(l, set()) for l in linenos))
+        linenos = [self._coverage[filename].get(l, set()) for l in linenos]
+        if not linenos:
+            return set()
+        return reduce(or_, linenos)
 
     def clear_test_coverage(self, test):
         # clean up existing tests

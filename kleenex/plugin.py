@@ -2,13 +2,12 @@
 kleenex.plugin
 ~~~~~~~~~~~~~~
 
-:copyright: 2011 David Cramer.
+:copyright: 2011 DISQUS.
 :license: BSD
 """
 
 from __future__ import absolute_import
 
-import ConfigParser
 import logging
 import os
 import simplejson
@@ -24,34 +23,7 @@ from subprocess import Popen, PIPE, STDOUT
 from kleenex.db import TestCoverageDB
 from kleenex.diff import DiffParser
 from kleenex.tracer import ExtendedTracer
-
-def read_config(filename):
-    """
-    This looks for [kleenex] in ``filename`` such as the following:
-
-    [kleenex]
-    db = sqlite:///coverage.db
-    parent = origin/master
-    discover = true
-    report = true
-    report-output = sys://stdout
-    record = true
-    skip-missing = true
-    """
-    config = ConfigParser.RawConfigParser(allow_no_value=False)
-    config.read(filename)
-
-    ns = 'kleenex'
-
-    return {
-        'db': config.get(ns, 'db') or 'sqlite:///coverage.db',
-        'parent': config.get(ns, 'parent') or 'origin/master',
-        'discover': config.getboolean(ns, 'discover') or False,
-        'report': config.getboolean(ns, 'report') or False,
-        'report-output': config.get(ns, 'report_output') or 'sys://stdout',
-        'record': config.getboolean(ns, 'record') or False,
-        'skip-missing': config.getBoolean(ns, 'skip-missing') or True,
-    }
+from kleenex.config import read_config
 
 def is_py_script(filename):
     "Returns True if a file is a python executable."
@@ -61,7 +33,8 @@ def is_py_script(filename):
         return False
     else:
         try:
-            first_line = open(filename, "r").next().strip()
+            with open(filename, "r") as fp:
+                first_line = fp.readline().strip()
             return "#!" in first_line and "python" in first_line
         except StopIteration:
             return False
@@ -70,11 +43,8 @@ def _get_git_revision(path):
     revision_file = os.path.join(path, 'refs', 'heads', 'master')
     if not os.path.exists(revision_file):
         return None
-    fh = open(revision_file, 'r')
-    try:
-        return fh.read()
-    finally:
-        fh.close()
+    with open(revision_file, 'r') as fp:
+        return fp.read()
 
 class TestCoveragePlugin(Plugin):
     """
@@ -118,13 +88,7 @@ class TestCoveragePlugin(Plugin):
         Plugin.configure(self, options, config)
         config = read_config('setup.cfg')
 
-        self.skip_missing = config['skip-missing']
-        self.record = config['record']
-        self.report_coverage = config['report']
-        self.discover = config['discover']
-        self.dsn = config['db']
-        self.parent = config['parent']
-        # self.enabled = (self.record or self.report_coverage or self.discover)
+        self.config = config
 
         self.logger = logging.getLogger(__name__)
 
@@ -137,41 +101,43 @@ class TestCoveragePlugin(Plugin):
         # cov is a mapping of filename->[linenos]
         self.cov_data = defaultdict(set)
 
-        report_output = config['report-output']
+        report_output = config.report_output
         if not report_output:
             self.report_file = None
         elif report_output.startswith('sys://'):
-            self.report_file = getattr(sys, report_output[6:])
+            pipe = report_output[6:]
+            assert pipe in ('stdout', 'stderr')
+            self.report_file = getattr(sys, pipe)
         else:
             self.report_file = open(report_output, 'w')
 
     def begin(self):
         # XXX: this is pretty hacky
         self.db = TestCoverageDB(self.dsn, self.logger)
-        if self.record:
+        if self.config.record:
             self.db.upgrade()
 
         self.revision = _get_git_revision('.git')
 
-        if self.report_coverage or self.record:
+        if self.config.report or self.config.record:
             # If we're recording coverage we need to ensure it gets reset
             self.coverage = self._setup_coverage()
 
-        if not (self.discover or self.report_coverage):
+        if not (self.config.discover or self.config.report):
             return
 
         s = time.time()
         self.logger.info("Getting current revision")
         # pull in our diff
         # git diff `git merge-base HEAD master`
-        proc = Popen(['git', 'diff', self.parent], stdout=PIPE, stderr=STDOUT)
+        proc = Popen(['git', 'diff', self.config.parent], stdout=PIPE, stderr=STDOUT)
         diff = proc.stdout.read()
 
         s = time.time()
-        self.logger.info("Parsing diff from parent %s", self.parent)
+        self.logger.info("Parsing diff from parent %s", self.config.parent)
         # pull in our diff
         # git diff `git merge-base HEAD master`
-        proc = Popen(['git', 'diff', self.parent], stdout=PIPE, stderr=STDOUT)
+        proc = Popen(['git', 'diff', self.config.parent], stdout=PIPE, stderr=STDOUT)
         diff = proc.stdout.read()
 
         pending_funcs = self.pending_funcs
@@ -216,12 +182,12 @@ class TestCoveragePlugin(Plugin):
             if is_new_file:
                 continue
 
-            if not self.discover:
+            if not self.config.discover:
                 continue
 
         self.logger.info("Parsed diff in %.2fs as %d file(s)", time.time() - s, len(diff))
 
-        if self.discover:
+        if self.config.discover:
             self.logger.info("Finding coverage for %d file(s)", len(files))
 
             for filename, linenos in diff.iteritems():
@@ -229,7 +195,7 @@ class TestCoveragePlugin(Plugin):
                 if not test_coverage:
                     # check if we have any coverage recorded
                     if not self.db.has_test_coverage(filename):
-                        if self.skip_missing:
+                        if self.config.skip_missing:
                             self.logger.warning('%s has no test coverage recorded', filename)
                             continue
                         raise AssertionError("Missing test coverage for %s" % filename)
@@ -240,7 +206,7 @@ class TestCoveragePlugin(Plugin):
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
     def report(self, stream):
-        if not self.report_coverage:
+        if not self.config.report:
             return
 
         cov_data = self.cov_data
@@ -294,7 +260,7 @@ class TestCoveragePlugin(Plugin):
             return True
 
         # test has no coverage recorded, defer to other plugins
-        elif not self.db.has_seen_test(test_name):
+        elif self.config.allow_missing and not self.db.has_seen_test(test_name):
             self.pending_funcs.add(test_name)
             self.logger.info("Allowing test due to missing coverage report: %s", test_name)
             return None
@@ -302,13 +268,13 @@ class TestCoveragePlugin(Plugin):
         return False
 
     def startTest(self, test):
-        if not (self.record or self.report_coverage):
+        if not (self.config.record or self.config.report):
             return
 
         self.coverage.start()
 
     def stopTest(self, test):
-        if not (self.record or self.report_coverage):
+        if not (self.config.record or self.config.report):
             return
 
         cov = self.coverage
@@ -331,7 +297,7 @@ class TestCoveragePlugin(Plugin):
         # The rest of this is all run within a single transaction
         trans = self.db.begin()
 
-        if self.record:
+        if self.config.report:
             self.db.clear_test_coverage(test_name)
             self.db.set_test_has_coverage(test_name, self.revision)
 
@@ -340,26 +306,15 @@ class TestCoveragePlugin(Plugin):
         for filename in cov.data.measured_files():
             linenos.extend(cov.data.executed_lines(filename).values())
 
-        total_prox = sum(linenos)
-        if total_prox:
-            num_vals = len(linenos)
-            mean_prox = total_prox / num_vals
-            stddev_prox = (sum([(l - mean_prox)**2 for l in linenos]) / num_vals)^2
-            min_prox = mean_prox - stddev_prox
-            max_prox = mean_prox + stddev_prox
-
         for cu in rep.code_units:
             # if sys.modules[test_.__module__].__file__ == cu.filename:
             #     continue
             filename = cu.name + '.py'
             linenos = cov.data.executed_lines(cu.filename)
-            if total_prox:
-                linenos_in_prox = [k for k, v in linenos.iteritems() if v <= max_prox and v >= min_prox]
-            else:
-                linenos_in_prox = linenos
-            if self.record and linenos_in_prox:
+            linenos_in_prox = dict((k, v) for k, v in linenos.iteritems() if v < self.config.max_distance)
+            if self.config.record and linenos_in_prox:
                 self.db.set_test_coverage(test_name, filename, linenos_in_prox)
-            if self.report_coverage:
+            if self.config.report:
                 diff = self.diff_data[filename]
                 cov_linenos = [l for l in linenos if l in diff]
                 if cov_linenos:
