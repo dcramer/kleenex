@@ -57,9 +57,38 @@ class CoverageDB(object):
         return self.conn.begin()
 
     def add_revision(self, revision, commit_date):
+        statement = select([Revisions.c.id]).where(Revisions.c.revision == revision)
+        result = self._execute(statement).fetchall()
+
+        if result:
+            return result[0][0]
+
         result = self._execute(Revisions.insert().values(revision=revision, commit_date=commit_date))
 
         return result.inserted_primary_key[0]
+
+    def remove_revision(self, revision_id):
+        "Removes all data related to a revision (run in a transaction)."
+        trans = self.begin()
+        self._execute(Coverage.delete().where(Tests.c.revision_id == revision_id))
+        self._execute(Tests.delete().where(Tests.c.revision_id == revision_id))
+        self._execute(Revisions.delete().where(Revisions.c.revision_id == revision_id))
+        trans.commit()
+
+    def trim_revisions(self, num_to_keep):
+        statement = select([Revisions.c.id]).order_by(Revisions.c.commit_date.desc())\
+          .offset(num_to_keep)
+        result = self._execute(statement).fetchall()
+
+        if not result:
+            return 0
+
+        num_trimmed = 0
+        for revision in result:
+            num_trimmed += 1
+            self.remove_revision(revision[0])
+
+        return num_trimmed
 
     def get_revision_id(self, revision):
         statement = select([Revisions.c.id]).where(Revisions.c.revision == revision).limit(1)

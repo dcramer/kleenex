@@ -20,6 +20,7 @@ def read_config(filename, section='kleenex'):
     skip_missing = true
     max_distance = 4
     test_missing = true
+    max_revisions = 100
     """
     config = RawConfigParser({
         'db': 'sqlite:///coverage.db',
@@ -31,6 +32,7 @@ def read_config(filename, section='kleenex'):
         'skip_missing': 'true',
         'max_distance': '4',
         'test_missing': 'true',
+        'max_revisions': '100',
     }, dict_type=Config)
     config.read(filename)
 
@@ -47,4 +49,5 @@ def read_config(filename, section='kleenex'):
         'skip_missing': config.getboolean(section, 'skip_missing'),
         'max_distance': config.getint(section, 'max_distance'),
         'test_missing': config.getboolean(section, 'test_missing'),
+        'max_revisions': config.getint(section, 'max_revisions'),
     })

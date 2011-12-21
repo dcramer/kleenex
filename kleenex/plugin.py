@@ -117,6 +117,12 @@ class TestCoveragePlugin(Plugin):
         self.parent_revision = proc.stdout.read().strip()
 
         if self.config.record:
+            if self.config.max_revisions:
+                self.logger.info("Trimming revision tail (past %s)", self.config.max_revisions)
+                s = time.time()
+                num_revisions = self.db.trim_revisions(self.config.max_revisions)
+                self.logger.info("%d revision(s) were trimmed in %.2fs", num_revisions, time.time() - s)
+
             # Use our current revision
             self.logger.info("Recording current revision")
             proc = Popen(['git', 'log', '-n 1', '--format=%H %ct'], stdout=PIPE, stderr=STDOUT)

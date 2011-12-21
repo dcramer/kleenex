@@ -81,3 +81,5 @@ record
 max_distance
   Maximum distance from plugin integration of test for it to be recorded
 
+max_revisions
+  Maximum number of revisions (ordered by commit_date) to maintain coverage for. Defaults to 100.
