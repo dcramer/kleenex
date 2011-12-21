@@ -129,6 +129,7 @@ class TestCoveragePlugin(Plugin):
             self.revision, commit_date = proc.stdout.read().strip().split(' ')
             commit_date = datetime.datetime.fromtimestamp(int(commit_date))
             self.revision_id = self.db.add_revision(self.revision, commit_date)
+            self.logger.info("Current revision recorded as %s (commit date of %s)", self.revision, commit_date)
 
         elif self.config.discover:
             # We need to determine our merge base
