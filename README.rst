@@ -25,7 +25,7 @@ which can be changed by passing ``--kleenex-config-section=foo``.
 
 Example configuration for a master postgres CI server::
 
-    # ``python runtests.py --kleenex-config-section=kleenex:master``
+    # nosetests --with-kleenex --kleenex-config-section=kleenex:master
 
     # setup.cfg
     [kleenex:master]
