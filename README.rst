@@ -47,8 +47,12 @@ Example configuration for a master postgres CI server::
     report = false
     discover = false
 
+You can also change the file which is read (setup.cfg by default) using ``--kleenex-config``.
+
 Options
 =======
+
+The following options are recognized by Kleenex::
 
 db
   SQLAlchemy compatible DSN to connect to the database.
