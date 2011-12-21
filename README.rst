@@ -17,6 +17,16 @@ that test in the suite automatically. This is fine for prototyping but not gener
 Kleenex also checks for missing coverage along the way. By default it will raise an error when it hits a code
 change that has no test coverage. To disable this functionality, you should set ``skip_missing`` in your config.
 
+
+Real World Usage
+----------------
+
+Kleenex is designed to work in CI environments. Generally, you would setup your CI server to run it in record
+mode (with ``record``), and your clients (yourself, other developers) would simply connect to this
+database to discover coverage. This ensures that the installation stays aware of your parent branch (e.g. master)
+and doesn't record data from children.
+
+
 Configuration
 -------------
 
@@ -37,10 +47,33 @@ Example configuration for a master postgres CI server::
     report = false
     discover = false
 
-Real World Usage
-----------------
+Options
+=======
 
-Kleenex is designed to work in CI environments. Generally, you would setup your CI server to run it in record
-mode (with ``record``), and your clients (yourself, other developers) would simply connect to this
-database to discover coverage. This ensures that the installation stays aware of your parent branch (e.g. master)
-and doesn't record data from children.
+db
+  SQLAlchemy compatible DSN to connect to the database.
+
+test_missing
+  Run tests which are missing coverage (generally they are new).
+
+discover
+  Discover tests to run using database.
+
+skip_missing
+  Allow missing coverage in discovery mode.
+
+parent
+  Parent commit that your branch was based from.
+
+report
+  Generate a coverage report against your diff.
+
+report_output
+  Location to output report. If provided will record as JSON. For stdout/stderr you can use stream://stderr.
+
+record
+  Record test coverage to database.
+
+max_distance
+  Maximum distance from plugin integration of test for it to be recorded
+
