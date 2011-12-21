@@ -15,6 +15,7 @@ setup(
     packages=find_packages(exclude=["tests"]),
     zip_safe=False,
     install_requires=[
+        'coverage>=3.5',
         'nose>=0.9',
         'simplejson',
         'SQLAlchemy>=0.7',
