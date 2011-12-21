@@ -151,14 +151,11 @@ class CoverageDB(object):
         return bool(self._execute(statement).fetchall())
 
     def get_coverage(self, revision_id, filename, linenos):
-        statement = select([Coverage.c.lineno, Tests.c.test])\
+        statement = select([Tests.c.test])\
           .where(Tests.c.id == Coverage.c.test_id)\
           .where(Coverage.c.filename == filename)\
           .where(Coverage.c.revision_id == revision_id)\
-          .where(Coverage.c.lineno.in_(linenos))
+          .where(Coverage.c.lineno.in_(linenos))\
+          .distinct()
 
-        file_cover = defaultdict(set)
-        for lineno, test in self._execute(statement).fetchall():
-            file_cover[lineno].add(test)
-
-        return file_cover
+        return [r[0] for r in self._execute(statement).fetchall()]
