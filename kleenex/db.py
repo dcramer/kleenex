@@ -27,6 +27,7 @@ Coverage = Table('coverage', metadata,
     Column('id', Integer, primary_key=True),
     Column('filename', String),
     Column('lineno', Integer),
+    Column('distance', Integer),
     Column('test_id', Integer, ForeignKey('tests.id'), index=True),
     Column('revision_id', Integer, ForeignKey('revisions.id'), index=True),
     UniqueConstraint('filename', 'lineno', 'test_id'),
@@ -95,14 +96,19 @@ class CoverageDB(object):
         return result[0] if result else None
 
     def add_coverage(self, revision_id, test_id, filename, linenos):
+        """
+        linenos should be a dictionary:
+            {lineno: distance}
+        """
         # add new data
         ins = Coverage.insert()
         self._execute(ins, [{
             'filename': filename,
             'lineno': lineno,
+            'distance': distance,
             'test_id': test_id,
             'revision_id': revision_id,
-        } for lineno in linenos])
+        } for lineno, distance in linenos.iteritems()])
 
     def remove_coverage(self, revision_id, test_id):
         self._execute(Coverage.delete().where(Coverage.c.test_id == test_id))
