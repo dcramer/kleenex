@@ -8,6 +8,7 @@ kleenex.plugin
 
 from __future__ import absolute_import
 
+import datetime
 import logging
 import os
 import simplejson
@@ -20,33 +21,11 @@ from collections import defaultdict
 from nose.plugins.base import Plugin
 from subprocess import Popen, PIPE, STDOUT
 
+from kleenex.config import read_config
 from kleenex.db import CoverageDB
 from kleenex.diff import DiffParser
 from kleenex.tracer import ExtendedTracer
-from kleenex.config import read_config
-
-
-def is_py_script(filename):
-    "Returns True if a file is a python executable."
-    if filename.endswith(".py") and os.path.exists(filename):
-        return True
-    elif not os.access(filename, os.X_OK):
-        return False
-    else:
-        try:
-            with open(filename, "r") as fp:
-                first_line = fp.readline().strip()
-            return "#!" in first_line and "python" in first_line
-        except StopIteration:
-            return False
-
-
-def _get_git_revision(path):
-    revision_file = os.path.join(path, 'refs', 'heads', 'master')
-    if not os.path.exists(revision_file):
-        return None
-    with open(revision_file, 'r') as fp:
-        return fp.read()
+from kleenex.utils import is_py_script
 
 
 class TestCoveragePlugin(Plugin):
@@ -101,6 +80,8 @@ class TestCoveragePlugin(Plugin):
 
         self.config = config
 
+        assert not (self.config.discover and self.config.record), "You cannot use both `record` and `discover` options."
+
         self.logger = logging.getLogger(__name__)
 
         self.pending_funcs = set()
@@ -125,28 +106,42 @@ class TestCoveragePlugin(Plugin):
         if self.config.record:
             self.db.upgrade()
 
-        self.revision = _get_git_revision('.git')
-
         if self.config.report or self.config.record:
             # If we're recording coverage we need to ensure it gets reset
             self.coverage = self._setup_coverage()
+
+        if not (self.config.discover or self.config.record):
+            return
+
+        proc = Popen(['git', 'merge-base', 'HEAD', self.config.parent], stdout=PIPE, stderr=STDOUT)
+        self.parent_revision = proc.stdout.read().strip()
+
+        if self.config.record:
+            # Use our current revision
+            self.logger.info("Recording current revision")
+            proc = Popen(['git', 'log', '-n 1', '--format=%H %ct'], stdout=PIPE, stderr=STDOUT)
+            self.revision, commit_date = proc.stdout.read().strip().split(' ')
+            commit_date = datetime.datetime.fromtimestamp(int(commit_date))
+            self.revision_id = self.db.add_revision(self.revision, commit_date)
+
+        elif self.config.discover:
+            # We need to determine our merge base
+            self.logger.info("Checking coverage for revision")
+            self.revision = self.parent_revision
+            try:
+                self.revision_id = self.db.get_revision_id(self.revision)
+            except ValueError:
+                raise ValueError('Revision not recorded in coverage database (do you need to rebase?)')
 
         if not (self.config.discover or self.config.report):
             return
 
         s = time.time()
-        self.logger.info("Getting current revision")
+        self.logger.info("Parsing diff from parent %s", self.parent_revision)
         # pull in our diff
         # git diff `git merge-base HEAD master`
-        proc = Popen(['git', 'diff', self.config.parent], stdout=PIPE, stderr=STDOUT)
-        diff = proc.stdout.read()
-
-        s = time.time()
-        self.logger.info("Parsing diff from parent %s", self.config.parent)
-        # pull in our diff
-        # git diff `git merge-base HEAD master`
-        proc = Popen(['git', 'diff', self.config.parent], stdout=PIPE, stderr=STDOUT)
-        diff = proc.stdout.read()
+        proc = Popen(['git', 'diff', self.parent_revision], stdout=PIPE, stderr=STDOUT)
+        diff = proc.stdout.read().strip()
 
         pending_funcs = self.pending_funcs
 
@@ -182,7 +177,7 @@ class TestCoveragePlugin(Plugin):
 
             # file is new, only record diff state
             for chunk in file['chunks']:
-                linenos = filter(bool, (l['new_lineno'] for l in chunk))
+                linenos = filter(bool, (l['new_lineno'] for l in chunk if l['line']))
                 diff[file['new_filename'][2:]].update(linenos)
 
             # we dont care about missing coverage for new code, and there
@@ -199,10 +194,10 @@ class TestCoveragePlugin(Plugin):
             self.logger.info("Finding coverage for %d file(s)", len(files))
 
             for filename, linenos in diff.iteritems():
-                test_coverage = self.db.get_test_coverage(filename, linenos)
+                test_coverage = self.db.get_coverage(self.revision_id, filename, linenos)
                 if not test_coverage:
                     # check if we have any coverage recorded
-                    if not self.db.has_test_coverage(filename):
+                    if not self.db.has_coverage(self.revision_id, filename):
                         if self.config.skip_missing:
                             self.logger.warning('%s has no test coverage recorded', filename)
                             continue
@@ -267,7 +262,7 @@ class TestCoveragePlugin(Plugin):
             return True
 
         # test has no coverage recorded, defer to other plugins
-        elif self.config.test_missing and not self.db.has_seen_test(test_name):
+        elif self.config.test_missing and not self.db.has_test(self.revision_id, test_name):
             self.pending_funcs.add(test_name)
             self.logger.info("Allowing test due to missing coverage report: %s", test_name)
             return None
@@ -301,27 +296,29 @@ class TestCoveragePlugin(Plugin):
         # process all files
         rep.find_code_units(None, cov.config)
 
-        # The rest of this is all run within a single transaction
-        trans = self.db.begin()
-
-        if self.config.record:
-            self.db.clear_test_coverage(test_name)
-            self.db.set_test_has_seen_test(test_name, self.revision)
-
         # Compute the standard deviation for all code executed from this test
         linenos = []
         for filename in cov.data.measured_files():
             linenos.extend(cov.data.executed_lines(filename).values())
+
+        # The rest of this is all run within a single transaction
+        trans = self.db.begin()
+
+        if self.config.record:
+            self.db.remove_test(self.revision_id, test_name)
+            test_id = self.db.add_test(self.revision_id, test_name)
 
         for cu in rep.code_units:
             # if sys.modules[test_.__module__].__file__ == cu.filename:
             #     continue
             filename = cu.name + '.py'
             linenos = cov.data.executed_lines(cu.filename)
+
             if self.config.record:
                 linenos_in_prox = dict((k, v) for k, v in linenos.iteritems() if v < self.config.max_distance)
                 if linenos_in_prox:
-                    self.db.set_test_coverage(test_name, filename, linenos_in_prox)
+                    self.db.add_coverage(self.revision_id, test_id, filename, linenos_in_prox)
+
             if self.config.report:
                 diff = self.diff_data[filename]
                 cov_linenos = [l for l in linenos if l in diff]

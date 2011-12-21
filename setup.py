@@ -6,12 +6,12 @@ tests_require = [
 ]
 
 setup(
-    name='nose-kleenex',
+    name='kleenex',
     version='0.10.4',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     description='A discovery plugin for Nose which relies on code coverage.',
-    url='http://github.com/dcramer/nose-kleenex',
+    url='http://github.com/dcramer/kleenex',
     packages=find_packages(exclude=["tests"]),
     zip_safe=False,
     install_requires=[
