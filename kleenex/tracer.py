@@ -8,6 +8,7 @@ kleenex.tracer
 
 from coverage.collector import PyTracer
 
+
 class ExtendedTracer(PyTracer):
     def __init__(self):
         PyTracer.__init__(self)

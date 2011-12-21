@@ -10,6 +10,7 @@ This is an adaptation from lodgeit's lib/diff.py
 
 import re
 
+
 class DiffParser(object):
     """
     This is based on code from the open source project, "lodgeit".
