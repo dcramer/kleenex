@@ -97,7 +97,7 @@ class CoverageDB(object):
         if not result:
             raise ValueError(revision)
 
-        return result[0]
+        return result[0][0]
 
     def add_test(self, revision_id, test):
         result = self._execute(Tests.insert().values(test=test, revision=revision_id))
