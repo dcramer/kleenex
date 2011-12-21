@@ -100,7 +100,7 @@ class CoverageDB(object):
         return result[0][0]
 
     def add_test(self, revision_id, test):
-        result = self._execute(Tests.insert().values(test=test, revision=revision_id))
+        result = self._execute(Tests.insert().values(test=test, revision_id=revision_id))
         return result.inserted_primary_key[0]
 
     def remove_test(self, revision_id, test):
