@@ -126,7 +126,7 @@ class TestCoveragePlugin(Plugin):
 
         elif self.config.discover:
             # We need to determine our merge base
-            self.logger.info("Checking coverage for revision")
+            self.logger.info("Checking coverage for revision %s", self.parent_revision)
             self.revision = self.parent_revision
             try:
                 self.revision_id = self.db.get_revision_id(self.revision)
