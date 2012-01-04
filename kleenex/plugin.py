@@ -86,10 +86,12 @@ class TestCoveragePlugin(Plugin):
         self.logger = logging.getLogger(__name__)
 
         self.pending_funcs = set()
-        # diff is a mapping of filename->[linenos]
+        # diff is a mapping of filename->set(linenos)
         self.diff_data = defaultdict(set)
-        # cov is a mapping of filename->[linenos]
+        # cov is a mapping of filename->set(linenos)
         self.cov_data = defaultdict(set)
+        # test test_name->dict(filename->set(linenos))
+        self.test_data = defaultdict(dict)
 
         report_output = config.report_output
         if not report_output or report_output == '-':
@@ -117,22 +119,7 @@ class TestCoveragePlugin(Plugin):
         proc = Popen(['git', 'merge-base', 'HEAD', self.config.parent], stdout=PIPE, stderr=STDOUT)
         self.parent_revision = proc.stdout.read().strip()
 
-        if self.config.record:
-            if self.config.max_revisions:
-                self.logger.info("Trimming revision tail (past %s)", self.config.max_revisions)
-                s = time.time()
-                num_revisions = self.db.trim_revisions(self.config.max_revisions)
-                self.logger.info("%d revision(s) were trimmed in %.2fs", num_revisions, time.time() - s)
-
-            # Use our current revision
-            self.logger.info("Recording current revision")
-            proc = Popen(['git', 'log', '-n 1', '--format=%H %ct'], stdout=PIPE, stderr=STDOUT)
-            self.revision, commit_date = proc.stdout.read().strip().split(' ')
-            commit_date = datetime.datetime.fromtimestamp(int(commit_date))
-            self.revision_id = self.db.add_revision(self.revision, commit_date)
-            self.logger.info("Current revision recorded as %s (commit date of %s)", self.revision, commit_date)
-
-        elif self.config.discover:
+        if self.config.discover:
             # We need to determine our merge base
             self.logger.info("Checking coverage for revision %s", self.parent_revision)
             self.revision = self.parent_revision
@@ -217,9 +204,40 @@ class TestCoveragePlugin(Plugin):
             self.logger.info("Determined available coverage in %.2fs with %d test(s)", time.time() - s, len(pending_funcs))
 
     def report(self, stream):
-        if not self.config.report:
-            return
+        if self.config.record:
+            self._record_test_coverage()
 
+        if self.config.report:
+            self._report_test_coverage(stream)
+
+    def _record_test_coverage(self):
+        trans = self.db.begin()
+
+        # Trim the all revisions outside of bounds
+        if self.config.max_revisions:
+            self.logger.info("Trimming revision tail (past %s)", self.config.max_revisions)
+            s = time.time()
+            num_revisions = self.db.trim_revisions(self.config.max_revisions)
+            self.logger.info("%d revision(s) were trimmed in %.2fs", num_revisions, time.time() - s)
+
+        # Use our current revision
+        self.logger.info("Recording current revision")
+        proc = Popen(['git', 'log', '-n 1', '--format=%H %ct'], stdout=PIPE, stderr=STDOUT)
+        self.revision, commit_date = proc.stdout.read().strip().split(' ')
+        commit_date = datetime.datetime.fromtimestamp(int(commit_date))
+        revision_id = self.db.add_revision(self.revision, commit_date)
+        self.logger.info("Current revision recorded as %s (commit date of %s)", self.revision, commit_date)
+
+        # Finally record tests and their coverage
+        for test_name, files in self.test_data.iteritems():
+            self.db.remove_test(revision_id, test_name)
+            test_id = self.db.add_test(revision_id, test_name)
+            for filename, linenos in files.iteritems():
+                self.db.add_coverage(revision_id, test_id, filename, linenos)
+
+        trans.commit()
+
+    def _report_test_coverage(self, stream):
         cov_data = self.cov_data
         diff_data = self.diff_data
 
@@ -300,9 +318,6 @@ class TestCoveragePlugin(Plugin):
         cov = self.coverage
         cov.stop()
 
-        test_ = test.test
-        test_name = self._get_name_from_test(test_)
-
         # this must have been imported under a different name
         # if self.discover and test_name not in self.pending_funcs:
         #     self.logger.warning("Unable to determine origin for test: %s", test_name)
@@ -319,12 +334,11 @@ class TestCoveragePlugin(Plugin):
         for filename in cov.data.measured_files():
             linenos.extend(cov.data.executed_lines(filename).values())
 
-        # The rest of this is all run within a single transaction
-        trans = self.db.begin()
-
+        # We're recording so fetch the test data
         if self.config.record:
-            self.db.remove_test(self.revision_id, test_name)
-            test_id = self.db.add_test(self.revision_id, test_name)
+            test_ = test.test
+            test_name = self._get_name_from_test(test_)
+            test_data = self.test_data[test_name]
 
         for cu in rep.code_units:
             # if sys.modules[test_.__module__].__file__ == cu.filename:
@@ -335,15 +349,13 @@ class TestCoveragePlugin(Plugin):
             if self.config.record:
                 linenos_in_prox = dict((k, v) for k, v in linenos.iteritems() if v < self.config.max_distance)
                 if linenos_in_prox:
-                    self.db.add_coverage(self.revision_id, test_id, filename, linenos_in_prox)
+                    test_data[filename] = linenos_in_prox
 
             if self.config.report:
                 diff = self.diff_data[filename]
                 cov_linenos = [l for l in linenos if l in diff]
                 if cov_linenos:
                     self.cov_data[filename].update(cov_linenos)
-
-        trans.commit()
 
         cov.erase()
 
