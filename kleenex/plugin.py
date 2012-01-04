@@ -9,6 +9,7 @@ kleenex.plugin
 from __future__ import absolute_import
 
 import datetime
+import inspect
 import logging
 import os
 import simplejson
@@ -268,8 +269,18 @@ class TestCoveragePlugin(Plugin):
         if test_name in self.pending_funcs:
             return True
 
+        # check if this test was modified (e.g. added/changed)
+        diff_data = self.diff_data[inspect.getfile(method)]
+        if diff_data:
+            lines, startlineno = inspect.getsourcelines(method)
+            for lineno in xrange(startlineno, len(lines) + startlineno):
+                if lineno in diff_data:
+                    self.pending_funcs.add(test_name)
+                    self.logger.info("Adding test due to new or changed code: %s", test_name)
+                    return True
+
         # test has no coverage recorded, defer to other plugins
-        elif self.config.test_missing and not self.db.has_test(self.revision_id, test_name):
+        if self.config.test_missing and not self.db.has_test(self.revision_id, test_name):
             self.pending_funcs.add(test_name)
             self.logger.info("Allowing test due to missing coverage report: %s", test_name)
             return None
