@@ -7,7 +7,7 @@ tests_require = [
 
 setup(
     name='kleenex',
-    version='0.14.0',
+    version='0.15.0',
     author='David Cramer',
     author_email='dcramer@gmail.com',
     description='A discovery plugin for Nose which relies on code coverage.',
